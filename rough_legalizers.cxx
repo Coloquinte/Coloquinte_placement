@@ -17,8 +17,17 @@ void region_distribution::region::selfcheck() const{
 }
 
 void region_distribution::selfcheck() const{
-    for(region const & r : placement_regions_){
-        r.selfcheck();
+    for(region const & R : placement_regions_){
+        R.selfcheck();
+    }
+    std::vector<capacity_t> capacities(cell_list_.size(), 0);
+    for(region const & R : placement_regions_){
+        for(cell_ref const C : R.cell_references_){
+            capacities[C.index_in_list_] += C.allocated_capacity_;
+        }
+    }
+    for(index_t i=0; i < cell_list_.size(); ++i){
+        assert(capacities[i] == cell_list_[i].demand_);
     }
 }
 
@@ -83,15 +92,15 @@ void region_distribution::region::distribute_new_cells(region & region_a, region
     }
 
     // Cells trending toward a first
-    std::sort(cells.begin(), cells.end(), [](cell_ref const c1, cell_ref const c2) -> bool{ return c1.marginal_cost_ < c2.marginal_cost_; });
+    std::sort(cells.begin(), cells.end());//, [](cell_ref const c1, cell_ref const c2) -> bool{ return c1.marginal_cost_ < c2.marginal_cost_; });
 
-
-    index_t preference_limit=0,            // First cell that would rather go to b (or cells.size())
+    index_t preference_limit=0,         // First cell that would rather go to b (or cells.size())
          a_capacity_limit=0,            // After the last cell that region_a can take entirely (or 0)
          b_capacity_limit=cells.size(); // Last cell (but first in the vector) that region_b can take entirely (or cells.size())
 
     capacity_t remaining_capacity_a = region_a.capacity_, remaining_capacity_b = region_b.capacity_;
     for(;preference_limit < cells.size() && cells[preference_limit].marginal_cost_ <= 0.0; ++preference_limit);
+
     { // Block
     capacity_t remaining_cap_a = region_a.capacity_;
     index_t i=0;
@@ -104,6 +113,7 @@ void region_distribution::region::distribute_new_cells(region & region_a, region
         ++i;
     }
     } // Block
+
     { // Block
     capacity_t remaining_cap_b = region_b.capacity_;
     index_t i=cells.size();
@@ -118,43 +128,32 @@ void region_distribution::region::distribute_new_cells(region & region_a, region
     } // Block
 
     std::vector<cell_ref> cells_a_side, cells_b_side;
-    // The first two cases may require cutting a cell
-    if(preference_limit < b_capacity_limit){ // All cells that can go be on b side would: pack on b
-        for(index_t i=0; i+1<b_capacity_limit; ++i){
-            cells_a_side.push_back(cells[i]);
-        }
-        // Cut cell numbered a_capacity_limit
-        if(b_capacity_limit <= cells.size()){
-            cell_ref cell_cut_a = cells[b_capacity_limit-1], cell_cut_b = cells[b_capacity_limit-1]; assert(cell_cut_a.allocated_capacity_ > 0);
-            cell_cut_a.allocated_capacity_ -= remaining_capacity_b;
-            cell_cut_b.allocated_capacity_ = remaining_capacity_b;
-            if(cell_cut_a.allocated_capacity_ > 0){ cells_a_side.push_back(cell_cut_a); }
-            if(cell_cut_b.allocated_capacity_ > 0){ cells_b_side.push_back(cell_cut_b); }
-        }
-        for(index_t i=b_capacity_limit; i<cells.size(); ++i){
-            cells_b_side.push_back(cells[i]);
-        }
-    }
-    else if(preference_limit > a_capacity_limit){ // All cells that can be on a side would: pack on a
-        for(index_t i=0; i<a_capacity_limit; ++i){
-            cells_a_side.push_back(cells[i]);
-        }
-        // Cut cell numbered a_capacity_limit
-        if(a_capacity_limit < cells.size()){
-            cell_ref cell_cut_a = cells[a_capacity_limit], cell_cut_b = cells[a_capacity_limit]; assert(cell_cut_a.allocated_capacity_ > 0);
-            cell_cut_a.allocated_capacity_ = remaining_capacity_a;
-            cell_cut_b.allocated_capacity_ -= remaining_capacity_a;
-            if(cell_cut_a.allocated_capacity_ > 0){ cells_a_side.push_back(cell_cut_a); }
-            if(cell_cut_b.allocated_capacity_ > 0){ cells_b_side.push_back(cell_cut_b); }
-        }
-        for(index_t i=a_capacity_limit+1; i<cells.size(); ++i){
-            cells_b_side.push_back(cells[i]);
-        }
-    }
-    else{ // preference_limit >= b_capacity_limit: this cell can go to side b
-          // preference_limit <= a_capacity_limit: cell preference_limit-1 can go to side a
+    if(preference_limit >= b_capacity_limit and preference_limit <= a_capacity_limit){
         cells_a_side.insert(cells_a_side.end(), cells.begin(), cells.begin() + preference_limit);
         cells_b_side.insert(cells_b_side.end(), cells.begin() + preference_limit, cells.end());
+    }
+    else{
+        index_t cut_position;
+        capacity_t allocated_to_a_part;
+        if(preference_limit < b_capacity_limit){ // Pack on b
+            cut_position = b_capacity_limit-1; // Exists since preference_limit >= 0
+            allocated_to_a_part = cells[cut_position].allocated_capacity_ - remaining_capacity_b;
+        }
+        else{ // Pack on a
+        // if(preference_limit > a_capacity_limit)
+            cut_position = a_capacity_limit; // Necessarily a correct position since preference_limits <= cells.size()
+            allocated_to_a_part = remaining_capacity_a;
+        }
+
+        cells_a_side.insert(cells_a_side.end(), cells.begin(), cells.begin() + cut_position);
+
+        cell_ref cell_cut_a = cells[cut_position], cell_cut_b = cells[cut_position];
+        cell_cut_a.allocated_capacity_ = allocated_to_a_part;
+        cell_cut_b.allocated_capacity_ -= allocated_to_a_part;
+        if(cell_cut_a.allocated_capacity_ > 0){ cells_a_side.push_back(cell_cut_a); }
+        if(cell_cut_b.allocated_capacity_ > 0){ cells_b_side.push_back(cell_cut_b); }
+
+        cells_b_side.insert(cells_b_side.end(), cells.begin() + cut_position+1, cells.end());
     }
 
     capacity_t unused_capacity_a = region_a.capacity_;
@@ -167,8 +166,17 @@ void region_distribution::region::distribute_new_cells(region & region_a, region
         unused_capacity_b -= c.allocated_capacity_;
     }
 
+    
     // Verify that the cells have been correctly handled
-    //assert(std::max(cells_a_side.begin(), cells_a_side.end())->marginal_cost_ <= std::min(cells_b_side.begin(), cells_b_side.end())->marginal_cost_);
+    std::vector<float_t> costs_a_side, costs_b_side;
+    for(auto const C : cells_a_side){ costs_a_side.push_back(C.marginal_cost_); }
+    for(auto const C : cells_b_side){ costs_b_side.push_back(C.marginal_cost_); }
+    if(not costs_a_side.empty() and not costs_b_side.empty()){
+        float_t max_left = *std::max_element(costs_a_side.begin(), costs_a_side.end()), min_right = *std::min_element(costs_b_side.begin(), costs_b_side.end());
+        assert(max_left <= min_right);
+    }
+    
+
     region_a.cell_references_ = cells_a_side;
     region_b.cell_references_ = cells_b_side;
 
