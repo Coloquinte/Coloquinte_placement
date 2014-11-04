@@ -83,6 +83,7 @@ class region_distribution{
         float_t capacity() const;
         float_t allocated_capacity() const;
         float_t unused_capacity() const;
+        float_t distance(point<float_t> const & P) const;
         float_t distance(cell_ref const & C) const;
         static void distribute_new_cells(region & a, region & b, std::vector<cell_ref> cells);
     };
@@ -102,6 +103,8 @@ class region_distribution{
     // Reduces the number of cuts in the current solution to at most region_cnt() - 1 without loss of solution quality
     void fractions_minimization();
     void redo_bipartition(region & Ra, region & Rb);
+    std::vector<point<float_t> > get_exported_positions() const;
+
     void selfcheck() const;
     region & get_region(index_t x_coord, index_t y_coord);
 
@@ -142,7 +145,6 @@ class region_distribution{
     // Tries to escape local minimas with long-distance moves to non-filled places
     void line_moves();
     
-    
     /*
      * Create and export
      *
@@ -177,12 +179,16 @@ inline float_t region_distribution::region::allocated_capacity() const{
     for(cell_ref const C : cell_references_){
        ret += C.allocated_capacity_; 
     }
+    assert(unused_capacity() + ret == capacity());
     return ret;
 }
 
-inline float_t region_distribution::region::distance(region_distribution::cell_ref const & C) const{
-    float_t manhattan = std::abs(x_pos_ - C.x_pos_) + std::abs(y_pos_ - C.y_pos_);
+inline float_t region_distribution::region::distance(point<float_t> const & P) const{
+    float_t manhattan = std::abs(x_pos_ - P.x_) + std::abs(y_pos_ - P.y_);
     return manhattan * manhattan;
+}
+inline float_t region_distribution::region::distance(region_distribution::cell_ref const & C) const{
+    return distance(point<float_t>(C.x_pos_, C.y_pos_));
 }
 
 

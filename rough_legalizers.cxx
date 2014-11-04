@@ -24,6 +24,7 @@ void region_distribution::selfcheck() const{
     for(region const & R : placement_regions_){
         for(cell_ref const C : R.cell_references_){
             capacities[C.index_in_list_] += C.allocated_capacity_;
+            assert(C.allocated_capacity_ > 0);
         }
     }
     for(index_t i=0; i < cell_list_.size(); ++i){
@@ -31,13 +32,18 @@ void region_distribution::selfcheck() const{
     }
 }
 
-region_distribution::region::region(box<int_t> bx, std::vector<fixed_cell> obstacles, std::vector<cell_ref> cells) : surface_(bx), cell_references_(cells), obstacles_(obstacles){
+region_distribution::region::region(box<int_t> bx, std::vector<fixed_cell> obstacles, std::vector<cell_ref> cells) : surface_(bx), cell_references_(cells){
     x_pos_ = static_cast<float_t>(surface_.x_max_ + surface_.x_min_) * 0.5;
     y_pos_ = static_cast<float_t>(surface_.y_max_ + surface_.y_min_) * 0.5;
 
     capacity_ = static_cast<capacity_t>(surface_.x_max_ - surface_.x_min_) * static_cast<capacity_t>(surface_.y_max_ - surface_.y_min_);
-    for(auto const & O : obstacles_){
-        // TODO: do it properly
+    for(auto const & O : obstacles){
+        box<int_t> const B = O.box_;
+        if(surface_.intersects(B)){
+            box<int_t> common_surface = surface_.intersection(B);
+            obstacles_.push_back(B);
+            capacity_ -= static_cast<capacity_t>(common_surface.x_max_ - common_surface.x_min_) * static_cast<capacity_t>(common_surface.y_max_ - common_surface.y_min_);
+        }
     }
 
     unused_capacity_ = capacity_;
@@ -135,6 +141,8 @@ void region_distribution::region::distribute_new_cells(region & region_a, region
     else{
         index_t cut_position;
         capacity_t allocated_to_a_part;
+
+        // Where do we cut?
         if(preference_limit < b_capacity_limit){ // Pack on b
             cut_position = b_capacity_limit-1; // Exists since preference_limit >= 0
             allocated_to_a_part = cells[cut_position].allocated_capacity_ - remaining_capacity_b;
@@ -165,7 +173,6 @@ void region_distribution::region::distribute_new_cells(region & region_a, region
     for(cell_ref const & c : cells_b_side){
         unused_capacity_b -= c.allocated_capacity_;
     }
-
     
     // Verify that the cells have been correctly handled
     std::vector<float_t> costs_a_side, costs_b_side;
@@ -229,12 +236,11 @@ void region_distribution::quadpartition(){
 float_t region_distribution::cost() const{
     double res = 0.0;
     for(region const & R : placement_regions_){
-        double this_region = 0.0;
         for(cell_ref const & C : R.cell_references_){
-            this_region += static_cast<double>(C.allocated_capacity_) * static_cast<double>(R.distance(C));
+            res += static_cast<double>(C.allocated_capacity_) * static_cast<double>(R.distance(C));
         }
-        res += this_region;
     }
+
     return res;
 }
 
@@ -247,52 +253,114 @@ void region_distribution::redo_bipartition(region_distribution::region & Ra, reg
 }
 
 void region_distribution::redo_bipartitions(){
-    for(index_t x = 0; x+1 < x_regions_cnt(); ++x){
-        for(index_t y = 0; y+1 < y_regions_cnt(); ++y){
-            redo_bipartition(get_region(x,y), get_region(x+1, y));
-            redo_bipartition(get_region(x,y), get_region(x, y+1));
-            redo_bipartition(get_region(x,y), get_region(x+1, y+1));
+    // Perform optimization on the diagonals going South-East
+    for(index_t diag = 0; diag < x_regions_cnt() + y_regions_cnt() - 1; ++diag){
+        index_t x_begin, y_begin, nbr_elts;
+        if(diag < y_regions_cnt()){ // Begin on the left side
+            x_begin = 0;
+            y_begin = diag;
+            nbr_elts = std::min(x_regions_cnt(), y_regions_cnt() - diag);
+        }
+        else{ // Begin on the upper side
+            x_begin = diag - y_regions_cnt() + 1;
+            y_begin = 0;
+            nbr_elts = std::min(y_regions_cnt(), x_regions_cnt() + y_regions_cnt() - diag -1);
+        }
+        for(index_t offs = 0; offs+1 < nbr_elts; ++offs){
+            redo_bipartition(get_region(x_begin+offs, y_begin+offs), get_region(x_begin+offs+1, y_begin+offs+1));
         }
     }
+
+    // Perform optimization on the diagonals going South-West
+    for(index_t diag = 0; diag < x_regions_cnt() + y_regions_cnt() - 1; ++diag){
+        index_t x_begin, y_begin, nbr_elts;
+        if(diag < x_regions_cnt()){ // Begin on the upper side
+            x_begin = diag;
+            y_begin = 0;
+            nbr_elts = std::min(diag, y_regions_cnt());
+        }
+        else{ // Begin on the right side
+            x_begin = x_regions_cnt() - 1;
+            y_begin = diag - x_regions_cnt() + 1;
+            nbr_elts = std::min(x_regions_cnt(), x_regions_cnt() + y_regions_cnt() - diag - 1);
+        }
+        for(index_t offs = 0; offs+1 < nbr_elts; ++offs){
+            redo_bipartition(get_region(x_begin-offs, y_begin+offs), get_region(x_begin-offs-1, y_begin+offs+1));
+        }
+    }
+
+    
+    // Perform optimization on the columns
+    for(index_t x = 0; x < x_regions_cnt(); ++x){
+        for(index_t y = 0; y+1 < y_regions_cnt(); ++y){
+            redo_bipartition(get_region(x, y), get_region(x, y+1));
+        }
+    }
+
+    // Perform optimization on the rows
+    for(index_t y = 0; y < y_regions_cnt(); ++y){
+        for(index_t x = 0; x+1 < x_regions_cnt(); ++x){
+            redo_bipartition(get_region(x, y), get_region(x+1, y));
+        }
+    }
+    
     selfcheck();
 }
 
+void region_distribution::fractions_minimization(){
+    // Find cycles of cut cells, then find a spanning tree to reallocate the cells
+    // TODO
+}
+
 /*
-region_distribution::region_distribution(global_placement const & orig) : x_cuts_cnt_(0), y_cuts_cnt_(0){
-    placement_regions_.resize(1);
-    
-    std::vector<movable_cell> cells;
-    std::vector<cell_ref> cell_refs;
-    std::vector<fixed_cell> obstacles;
-    for(index_t i=0; i<orig.placement_.size(); ++i){
+std::vector<point<float_t> > region_distribution::get_exported_positions() const{
+    std::vector<point<float_t> > weighted_pos(cell_list_.size(), point<float_t>(0.0, 0.0));
 
-        if(orig.reference_circuit_->get_cell(i).movability_.is_fully_movable()){
-            movable_cell c;
-            c.demand_ = orig.reference_circuit_->get_cell(i).area_;
-            c.x_pos_ = orig.placement_[i].x_pos_;
-            c.y_pos_ = orig.placement_[i].y_pos_;
-            c.index_in_placement_ = i;
+    struct tmp_cell_ref{
+        float_t pos;
+        index_t ind;
+        capacity_t cap;
 
-            cell_ref cr;
-            cr.allocated_capacity_ = orig.reference_circuit_->get_cell(i).area_;
-            cr.x_pos_ = orig.placement_[i].x_pos_;
-            cr.y_pos_ = orig.placement_[i].y_pos_;
-            cr.index_in_list_ = i;
+        bool operator<(tmp_cell_ref const o) const{ return pos < o.pos; }
+        tmp_cell_ref(float_t p, capacity_t c, index_t i) : pos(p), ind(i), cap(c){}
+    };
 
-            cells.push_back(c);
-            cell_refs.push_back(cr);
-        }
-        else{
-            float_t x_min = orig.placement_[i].x_pos_ - orig.reference_circuit_->get_cell(i).x_size_ * 0.5,
-                    x_max = orig.placement_[i].x_pos_ + orig.reference_circuit_->get_cell(i).x_size_ * 0.5,
-                    y_min = orig.placement_[i].y_pos_ - orig.reference_circuit_->get_cell(i).y_size_ * 0.5,
-                    y_max = orig.placement_[i].y_pos_ + orig.reference_circuit_->get_cell(i).y_size_ * 0.5;
-            obstacles.push_back(fixed_cell(box<int_t>(x_min, x_max, y_min, y_max)));
-        }
+    for(region const & R : placement_regions_){
+        std::vector<point<float_t> > new_pos(R.cell_references_.size());
+
+        { // Block
+            std::vector<tmp_cell_ref> all_ref_x;
+            for(index_t i=0; i<R.cell_references_.size(); ++i){
+                all_ref_x.push_back(tmp_cell_ref(R.cell_references_[i].x_pos_, R.cell_references[i].allocated_capacity_, R.cell_references[i].index_in_list_));
+            }
+            std::sort(all_ref_x.begin(), all_ref_x.end());
+            
+            for(tmp_cell_ref const C : all_ref_x){
+            }
+        } // Block
+
+        { // Block
+            std::vector<tmp_cell_ref> all_ref_y;
+            for(index_t i=0; i<R.cell_references_.size(); ++i){
+                all_ref_y.push_back(tmp_cell_ref(R.cell_references_[i].y_pos_, R.cell_references[i].allocated_capacity_, R.cell_references[i].index_in_list_));
+            }
+            std::sort(all_ref_y.begin(), all_ref_y.end());
+            float_t begin = surface.y_min_, end = surface_.y_max_;
+            capacity_t used_cap = 0;
+            for(tmp_cell_ref const C : all_ref_y){
+                float_t new_pos = ;
+                used_cap += C.cap;
+                weighted_pos[C.ind].y_ += new_pos * C.cap;
+            }
+        } // Block
     }
 
-    placement_area_ = orig.reference_circuit_->placement_area();
-    placement_regions_[0] = region(placement_area_, obstacles, cell_refs);
+    for(index_t i=0; i<weighted_pos.size(); ++i){
+        float_t cap = static_cast<float_t>(cell_list_[i].demand_);
+        weighted_pos[i] = point<float_t>(weighted_pos[i].x_/cap, weighted_pos[i].y_/cap);
+    }
+
+    return weighted_pos;
 }
 */
 
@@ -301,6 +369,9 @@ region_distribution::region_distribution(box<int_t> placement_area, std::vector<
     std::vector<cell_ref> references;
     for(index_t i=0; i<all_cells.size(); ++i){
         movable_cell const & c = all_cells[i];
+        if(c.demand_ == 0){
+            throw std::runtime_error("A cell has been found with demand 0");
+        }
         references.push_back( cell_ref(c.demand_, c.x_pos_, c.y_pos_, i) );
     }
 

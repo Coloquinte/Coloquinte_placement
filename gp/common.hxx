@@ -3,6 +3,7 @@
 #define COLOQUINTE_GP_COMMON
 
 #include <cstdint>
+#include <algorithm>
 
 namespace coloquinte{
 
@@ -38,26 +39,48 @@ struct point{
         return point<S>(static_cast<S>(x_), static_cast<S>(y_));
     }
     template<typename S>
-    operator point<S>(){
+    operator point<S>() const{
         return cast<S>();
     }
-
-    point<T> operator+(point<T> const o) const{
-        return point<T>(x_+o.x_, y_+o.y_);
-    }
-    point<T> operator-(point<T> const o) const{
-        return point<T>(x_-o.x_, y_-o.y_);
-    }
-    point<T> scale(T const o) const{
-        return point<T>(o*x_, o*y_);
-    }
 };
+
+template<typename T>
+point<T> operator+(point<T> const a, point<T> const b){
+    return point<T>(a.x_+b.x_, a.y_+b.y_);
+}
+template<typename T>
+point<T> operator-(point<T> const a, point<T> const b){
+    return point<T>(a.x_-b.x_, a.y_-b.y_);
+}
+template<typename T>
+point<T> operator*(T lambda, point<T> const p){
+    return point<T>(lambda * p.x_, lambda * p.y_);
+}
+template<typename T>
+point<T> operator*(point<T> const a, point<T> const b){
+    return point<T>(a.x_*b.x_, a.y_*b.y_);
+}
 
 template<typename T>
 struct box{
     T x_min_, y_min_, x_max_, y_max_;
     box(){}
     box(T x_mn, T x_mx, T y_mn, T y_mx) : x_min_(x_mn), x_max_(x_mx), y_min_(y_mn), y_max_(y_mx){}
+
+    bool intersects(box<T> const o) const{
+        return x_min_   < o.x_max_
+            && y_min_   < o.y_max_
+            && o.x_min_ < x_max_
+            && o.y_min_ < y_max_;
+    }
+    box<T> intersection(box<T> const o) const{
+        return box<T>(
+            std::max(x_min_, o.x_min_),
+            std::min(x_max_, o.x_max_),
+            std::max(y_min_, o.y_min_),
+            std::min(y_max_, o.y_max_)
+        );
+    }
 };
 
 using orientation_t = point<bool>;

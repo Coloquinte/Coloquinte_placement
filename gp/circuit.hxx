@@ -1,123 +1,85 @@
 
-#ifndef COLOQUINTE_GP_MODULES
-#define COLOQUINTE_GP_MODULES
+#ifndef COLOQUINTE_GP_CIRCUIT
+#define COLOQUINTE_GP_CIRCUIT
 
 #include "common.hxx"
+#include "solvers.hxx"
+#include "netlist.hxx"
+#include "rough_legalizers.hxx"
+
 #include <vector>
 
+
 namespace coloquinte{
+
 namespace gp{
 
+// Main class
 struct circuit{
+    struct placement_t{
+        std::vector<point<float_t> > positions_;
+        std::vector<point<float_t> > orientations_;
+    };
+
+    // Members
+    coloquinte::netlist internal_netlist;
+
+    box<int_t>                 placement_area_;
+    std::vector<placement_t>   placements_; // Current placements (at least two: one optimistic at index 0 and one pessimistic at index 1)
+
+    // Helpers
     public:
-    // Nets, their weights and their pins
-    struct net_pin{
-        index_t cell_ind_, pin_ind_in_cell_;
+
+    struct pin_1D{
+        index_t cell_ind;
+        float_t pos;
+        float_t offs;
+        bool movable;
+
+        bool operator<(pin_1D const o) const { return pos < o.pos; }
+
+        pin_1D(index_t c, float_t p, float_t o, bool m) : cell_ind(c), pos(p), offs(o), movable(m){}
     };
-    struct net{
-        index_t nbr_pins_;
-        float_t weight_;
-        net_pin * pins_;
-        ext_object backpointer_;
+    struct pin_2D{
+        index_t        cell_ind;
+        point<float_t> pos;
+        point<float_t> offs;
+        bool movable;
 
-        net(index_t pin_cnt);
-        ~net();
+        pin_2D(index_t c, point<float_t> p, point<float_t> o, bool m) : cell_ind(c), pos(p), offs(o), movable(m){}
     };
 
-    // Cells, their areas, their pins and their mobility attributes
-    struct cell_pin{
-        index_t net_ind_, pin_ind_in_net_;
-        index_t x_offset_, y_offset_;
-    };
-    struct cell{
-        class attributes{
-            // Movability values
-            static const std::uint32_t Movable = 1;
-            static const std::uint32_t XFlippable = 1 << 1;
-            static const std::uint32_t YFlippable = 1 << 2;
-            static const std::uint32_t SoftMacro = 1 << 3;
-        
-            std::uint32_t attr_;
-        
-            public:
-            attributes();
-
-            bool is_fully_movable() const{ return (attr_ & Movable) != 0; }
-            bool is_x_flippable()   const{ return (attr_ & XFlippable) != 0; }
-            bool is_y_flippable()   const{ return (attr_ & YFlippable) != 0; }
-        
-            void set_fully_movable(bool mv){  attr_ = mv ? attr_ | Movable    : attr_ & ~Movable;}
-            void set_x_flippable  (bool mv){  attr_ = mv ? attr_ | XFlippable : attr_ & ~XFlippable;}
-            void set_y_flippable  (bool mv){  attr_ = mv ? attr_ | YFlippable : attr_ & ~YFlippable;}
-        };
-
-        capacity_t area_;
-        float_t x_size_, y_size_;
-
-        attributes movability_;
-
-        index_t nbr_pins_;
-        cell_pin * pins_;
-        ext_object backpointer_;
-
-        cell(index_t pin_cnt);
-        ~cell();
-    };
+    
 
     private:
-    // Members
-    box<int_t> placement_area_;
-    std::vector<cell> cells_;
-    std::vector<net> nets_;
+    point<std::vector<pin_1D> > get_pins_1D(index_t placement_ind, index_t net_ind) const;
+    std::vector<pin_2D>         get_pins_2D(index_t placement_ind, index_t net_ind) const;
 
+    point<linear_system> empty_linear_systems() const;
 
     public:
-    inline index_t cell_cnt() const;
-    inline index_t net_cnt() const;
+    circuit(box<int_t> placement_surface, std::vector<point<float_t> > cell_positions, std::vector<point<float_t> > cell_orientations, std::vector<temporary_cell> all_cells, std::vector<temporary_net> all_nets, std::vector<temporary_pin> all_pins);
 
-    // Getters used by most modules (not meant to modify the circuit)
-    inline cell const & get_cell(index_t index) const;
-    inline net  const & get_net(index_t index)  const;
 
-    inline box<int_t> placement_area() const;
+    point<linear_system> get_HPWLF_linear_system (float_t tol, index_t placement_ind, index_t min_s, index_t max_s) const;
+    point<linear_system> get_HPWLR_linear_system (float_t tol, index_t placement_ind, index_t min_s, index_t max_s) const;
+    point<linear_system> get_star_linear_system  (float_t tol, index_t placement_ind, index_t min_s, index_t max_s) const;
+    point<linear_system> get_MST_linear_system   (float_t tol, index_t placement_ind, index_t min_s, index_t max_s) const;
 
-    // Net modifiers
-    inline void set_weight(index_t index, float_t weight);
+    point<linear_system> get_pulling_forces (float_t strength, index_t placement_ind) const;
 
-    // Cell modifiers
-    inline void set_area(index_t index, capacity_t area);
-    inline void set_size(index_t index, float_t x_size, float_t y_size);
+    float_t get_HPWL_wirelength(index_t placement_ind) const;
+
+    region_distribution get_rough_legalizer() const;
+
+    index_t cell_cnt() const{ return internal_netlist.cell_cnt(); }
+    index_t net_cnt() const{ return internal_netlist.net_cnt(); }
 };
 
-inline circuit::net::net(index_t pin_cnt) : nbr_pins_(pin_cnt), pins_(new net_pin[pin_cnt]){}
-inline circuit::net::~net(){delete pins_;}
 
-inline circuit::cell::attributes::attributes() : attr_(0){}
 
-inline circuit::cell::cell(index_t pin_cnt) : nbr_pins_(pin_cnt), pins_(new cell_pin[pin_cnt]){}
-inline circuit::cell::~cell(){delete pins_;}
-
-inline index_t circuit::cell_cnt() const{ return cells_.size(); }
-inline index_t circuit::net_cnt() const{ return nets_.size(); }
-inline circuit::cell const & circuit::get_cell(index_t index) const{ return cells_[index]; }
-inline circuit::net  const & circuit::get_net(index_t index)  const{ return nets_[index]; }
-
-inline void circuit::set_weight(index_t index, float_t weight){
-    nets_[index].weight_ = weight; 
-}
-
-inline box<int_t> circuit::placement_area() const{
-    return placement_area_;
-}
-
-inline void circuit::set_area(index_t index, capacity_t area){
-    cells_[index].area_ = area;
-}
-inline void circuit::set_size(index_t index, float_t x_size, float_t y_size){
-     cells_[index].x_size_ = x_size; cells_[index].y_size_ = y_size;
-}
-}; // namespace gp
-}; // namespace coloquinte
+} // namespace gp
+} // namespace coloquinte
 
 #endif
 
