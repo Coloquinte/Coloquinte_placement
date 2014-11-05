@@ -68,6 +68,8 @@ struct circuit{
 
     point<linear_system> get_pulling_forces (float_t strength, index_t placement_ind) const;
 
+    void get_result(float_t tol, index_t placement_ind, point<linear_system> & L);
+
     float_t get_HPWL_wirelength(index_t placement_ind) const;
 
     region_distribution get_rough_legalizer() const;

@@ -35,7 +35,7 @@ void add_forces(circuit::pin_1D const p1, circuit::pin_1D const p2, linear_syste
 
 circuit::circuit(box<int_t> placement_surface, std::vector<point<float_t> > cell_positions, std::vector<point<float_t> > cell_orientations,
                  std::vector<temporary_cell> all_cells, std::vector<temporary_net> all_nets, std::vector<temporary_pin> all_pins)
-            : placement_area_(placement_surface), internal_netlist(all_cells, all_nets, all_pins){
+            : internal_netlist(all_cells, all_nets, all_pins), placement_area_(placement_surface){
     placement_t common;
     common.positions_ = cell_positions;
     common.orientations_ = cell_orientations;
@@ -45,6 +45,7 @@ circuit::circuit(box<int_t> placement_surface, std::vector<point<float_t> > cell
 point<linear_system> circuit::empty_linear_systems() const{
     point<linear_system> ret = point<linear_system>(linear_system(cell_cnt()), linear_system(cell_cnt()));
 
+    /*
     for(index_t i=0; i<cell_cnt(); ++i){
         if( (XMovable & internal_netlist.get_cell(i).attributes) == 0){
             ret.x_.add_triplet(i, i, 1.0);
@@ -53,6 +54,7 @@ point<linear_system> circuit::empty_linear_systems() const{
             ret.y_.add_triplet(i, i, 1.0);
         }
     }
+    */
 
     return ret;
 }
@@ -97,6 +99,16 @@ void get_HPWLF(std::vector<circuit::pin_1D> const & pins, linear_system & L, flo
     }
 }
 
+float_t circuit::get_HPWL_wirelength(index_t placement_ind) const{
+    float_t sum = 0.0;
+    for(index_t i=0; i<net_cnt(); ++i){
+        auto pins = get_pins_1D(placement_ind, i);
+        auto minmaxX = std::minmax_element(pins.x_.begin(), pins.x_.end()), minmaxY = std::minmax_element(pins.y_.begin(), pins.y_.end());
+        sum += ((minmaxX.second->pos - minmaxX.first->pos) + (minmaxY.second->pos - minmaxY.first->pos));
+    }
+    return sum;
+}
+
 point<linear_system> circuit::get_HPWLF_linear_system (float_t tol, index_t placement_ind, index_t min_s, index_t max_s) const{
     point<linear_system> L = empty_linear_systems();
     for(index_t i=0; i<net_cnt(); ++i){
@@ -111,7 +123,7 @@ void get_HPWLR(std::vector<circuit::pin_1D> const & pins, linear_system & L, flo
     std::vector<circuit::pin_1D> sorted_pins = pins;
     std::sort(sorted_pins.begin(), sorted_pins.end());
     for(index_t i=0; i+1<sorted_pins.size(); ++i){
-        add_forces(sorted_pins[i], sorted_pins[i+1], L, tol, 1.0/(pins.size()-1));
+        add_forces(sorted_pins[i], sorted_pins[i+1], L, tol, 1.0);
     }
 }
 
@@ -125,6 +137,32 @@ point<linear_system> circuit::get_HPWLR_linear_system (float_t tol, index_t plac
     return L;
 }
 
+
+void circuit::get_result(float_t tol, index_t placement_ind, point<linear_system> & L){
+    std::vector<float_t> x_sol, y_sol;
+    std::vector<float_t> x_guess(cell_cnt()), y_guess(cell_cnt());
+    
+    assert(L.x_.size() == x_guess.size());
+    assert(L.y_.size() == y_guess.size());
+
+    for(index_t i=0; i<cell_cnt(); ++i){
+        x_guess[i] = placements_[placement_ind].positions_[i].x_;
+        y_guess[i] = placements_[placement_ind].positions_[i].y_;
+    }
+    
+    #pragma omp task shared(L) shared(x_sol)
+    x_sol = L.x_.solve_CG(x_guess, tol);
+    #pragma omp task shared(L) shared(y_sol)
+    y_sol = L.y_.solve_CG(y_guess, tol);
+    #pragma omp taskwait
+    
+    for(index_t i=0; i<cell_cnt(); ++i){
+        // TODO: correct formulation
+        if(internal_netlist.get_cell(i).attributes & (XMovable|YMovable) != 0){
+            placements_[placement_ind].positions_[i] = point<float_t>(x_sol[i], y_sol[i]);
+        }
+    }
+}
 
 
 

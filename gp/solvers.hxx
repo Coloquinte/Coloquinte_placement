@@ -1,6 +1,8 @@
 
-#ifndef COLOQUINfloat_tE_GP_SOLVERS
-#define COLOQUINfloat_tE_GP_SOLVERS
+#ifndef COLOQUINE_GP_SOLVERS
+#define COLOQUINE_GP_SOLVERS
+
+#include "common.hxx"
 
 #include <vector>
 
@@ -72,7 +74,11 @@ class linear_system{
 
     index_t size() const{ return target_.size(); }
 
-    std::vector<float_t> solve(std::vector<float_t> guess);
+    std::vector<float_t> solve_CG(std::vector<float_t> guess, float_t tol);
+    std::vector<float_t> solve_LLT();
+    std::vector<float_t> solve_LDLT();
+    
+
 };
 
 } // namespace gp

@@ -14,7 +14,7 @@ struct temporary_pin{
     point<float_t> offset;
     index_t cell_ind, net_ind;
     temporary_pin(){}
-    temporary_pin(point<int_t> offs, index_t c, index_t n) : offset(offs), cell_ind(c), net_ind(n){}
+    temporary_pin(point<float_t> offs, index_t c, index_t n) : offset(offs), cell_ind(c), net_ind(n){}
 };
 
 struct temporary_cell{
@@ -221,7 +221,7 @@ inline netlist::netlist(std::vector<temporary_cell> cells, std::vector<temporary
     cell_limits_.back() = pins.size();
 }
 
-void netlist::selfcheck() const{
+inline void netlist::selfcheck() const{
     index_t cell_cnt = cell_areas_.size();
     assert(cell_cnt+1 == cell_limits_.size());
     assert(cell_cnt == cell_sizes_.size());
