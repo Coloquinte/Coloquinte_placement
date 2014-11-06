@@ -37,12 +37,12 @@ class region_distribution{
     
     struct movable_cell{
         capacity_t demand_; // == area; No FP!!!
-        float_t x_pos_, y_pos_;  // Target position, determining the cost to allocate it
+        point<float_t> pos_;  // Target position, determining the cost to allocate it
         // int_t x_size, y_size; // May split cells
         index_t index_in_placement_;
 
         movable_cell();
-        movable_cell(capacity_t demand, float_t x, float_t y, index_t ind);
+        movable_cell(capacity_t demand, point<float_t> p, index_t ind);
     };
 
     private:
@@ -52,12 +52,12 @@ class region_distribution{
     
     struct cell_ref{
         capacity_t allocated_capacity_;
-        float_t x_pos_, y_pos_;
+        point<float_t> pos_;
         index_t index_in_list_;
         float_t marginal_cost_;
 
         cell_ref(){}
-        cell_ref(capacity_t demand, float_t x, float_t y, index_t ind) : allocated_capacity_(demand), x_pos_(x), y_pos_(y), index_in_list_(ind){}
+        cell_ref(capacity_t demand, point<float_t> p, index_t ind) : allocated_capacity_(demand), pos_(p), index_in_list_(ind){}
 
         bool operator<(cell_ref const o) const{ return marginal_cost_ < o.marginal_cost_; }
         friend region;
@@ -67,7 +67,7 @@ class region_distribution{
         public:
         capacity_t capacity_, // ==area; No FP!!! 
             unused_capacity_;
-        float_t x_pos_, y_pos_;
+        point<float_t> pos_;
     
         box<int_t> surface_;
         std::vector<cell_ref> cell_references_;
@@ -163,7 +163,7 @@ inline region_distribution::fixed_cell::fixed_cell(point<int_t> size, point<floa
 inline region_distribution::fixed_cell::fixed_cell(box<int_t> bx) : box_(bx){}
 
 inline region_distribution::movable_cell::movable_cell(){}
-inline region_distribution::movable_cell::movable_cell(capacity_t demand, float_t x, float_t y, index_t ind) : demand_(demand), x_pos_(x), y_pos_(y), index_in_placement_(ind){}
+inline region_distribution::movable_cell::movable_cell(capacity_t demand, point<float_t> p, index_t ind) : demand_(demand), pos_(p), index_in_placement_(ind){}
 
 inline index_t region_distribution::x_regions_cnt() const { return 1 << x_cuts_cnt_; }
 inline index_t region_distribution::y_regions_cnt() const { return 1 << y_cuts_cnt_; }
@@ -185,11 +185,11 @@ inline float_t region_distribution::region::allocated_capacity() const{
 }
 
 inline float_t region_distribution::region::distance(point<float_t> const & P) const{
-    float_t manhattan = std::abs(x_pos_ - P.x_) + std::abs(y_pos_ - P.y_);
+    float_t manhattan = std::abs(pos_.x_ - P.x_) + std::abs(pos_.y_ - P.y_);
     return manhattan * manhattan;
 }
 inline float_t region_distribution::region::distance(region_distribution::cell_ref const & C) const{
-    return distance(point<float_t>(C.x_pos_, C.y_pos_));
+    return distance(C.pos_);
 }
 
 

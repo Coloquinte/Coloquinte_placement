@@ -33,8 +33,9 @@ void region_distribution::selfcheck() const{
 }
 
 region_distribution::region::region(box<int_t> bx, std::vector<fixed_cell> obstacles, std::vector<cell_ref> cells) : surface_(bx), cell_references_(cells){
-    x_pos_ = static_cast<float_t>(surface_.x_max_ + surface_.x_min_) * 0.5;
-    y_pos_ = static_cast<float_t>(surface_.y_max_ + surface_.y_min_) * 0.5;
+    pos_ = static_cast<float_t>(0.5) * static_cast<point<float_t> >(
+        point<int_t>(surface_.x_max_ + surface_.x_min_, surface_.y_max_ + surface_.y_min_)
+    );
 
     capacity_ = static_cast<capacity_t>(surface_.x_max_ - surface_.x_min_) * static_cast<capacity_t>(surface_.y_max_ - surface_.y_min_);
     for(auto const & O : obstacles){
@@ -375,7 +376,7 @@ region_distribution::region_distribution(box<int_t> placement_area, std::vector<
         if(c.demand_ == 0){
             throw std::runtime_error("A cell has been found with demand 0");
         }
-        references.push_back( cell_ref(c.demand_, c.x_pos_, c.y_pos_, i) );
+        references.push_back( cell_ref(c.demand_, c.pos_, i) );
     }
 
     placement_regions_.push_back(
@@ -390,16 +391,14 @@ std::vector<region_distribution::movable_cell> region_distribution::export_posit
 
     for(region const & R : placement_regions_){
         for(cell_ref C : R.cell_references_){
-            weighted_pos[C.index_in_list_] = weighted_pos[C.index_in_list_] + static_cast<float_t>(C.allocated_capacity_) * point<float_t>(R.x_pos_, R.y_pos_);
+            weighted_pos[C.index_in_list_] = weighted_pos[C.index_in_list_] + static_cast<float_t>(C.allocated_capacity_) * R.pos_;
         }
     }
 
     std::vector<movable_cell> ret;
     for(index_t i=0; i<cell_list_.size(); ++i){
         movable_cell C = cell_list_[i];
-        float_t scale = static_cast<float_t>(C.demand_);
-        C.x_pos_ = weighted_pos[i].x_ / scale;
-        C.y_pos_ = weighted_pos[i].y_ / scale;
+        C.pos_ = ( static_cast<float_t>(1.0) / static_cast<float_t>(C.demand_) ) * weighted_pos[i];
         ret.push_back(C);
     }
     return ret;

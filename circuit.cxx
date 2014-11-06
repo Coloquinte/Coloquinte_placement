@@ -173,8 +173,7 @@ region_distribution circuit::get_rough_legalizer(index_t placement_ind) const{
     for(index_t i=0; i<cell_cnt(); ++i){
         auto C = internal_netlist.get_cell(i);
         if(C.attributes & (XMovable|YMovable)){
-            auto pos = placements_[placement_ind].positions_[i];
-            movable_cells.push_back(region_distribution::movable_cell(C.area, pos.x_, pos.y_, i));
+            movable_cells.push_back(region_distribution::movable_cell(C.area, placements_[placement_ind].positions_[i], i));
         }
         else{
             fixed_cells.push_back(region_distribution::fixed_cell(C.size, placements_[placement_ind].positions_[i]));
