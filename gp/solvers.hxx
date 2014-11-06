@@ -75,8 +75,7 @@ class linear_system{
     index_t size() const{ return target_.size(); }
 
     std::vector<float_t> solve_CG(std::vector<float_t> guess, float_t tol);
-    std::vector<float_t> solve_LLT();
-    std::vector<float_t> solve_LDLT();
+    std::vector<float_t> solve_cholesky();
     
 
 };

@@ -152,18 +152,37 @@ void circuit::get_result(float_t tol, index_t placement_ind, point<linear_system
     
     #pragma omp task shared(L) shared(x_sol)
     x_sol = L.x_.solve_CG(x_guess, tol);
+    //x_sol = L.x_.solve_cholesky();
     #pragma omp task shared(L) shared(y_sol)
     y_sol = L.y_.solve_CG(y_guess, tol);
+    //y_sol = L.y_.solve_cholesky();
     #pragma omp taskwait
     
     for(index_t i=0; i<cell_cnt(); ++i){
         // TODO: correct formulation
-        if(internal_netlist.get_cell(i).attributes & (XMovable|YMovable) != 0){
+        if( (internal_netlist.get_cell(i).attributes & (XMovable|YMovable)) != 0){
             placements_[placement_ind].positions_[i] = point<float_t>(x_sol[i], y_sol[i]);
         }
     }
 }
 
+region_distribution circuit::get_rough_legalizer(index_t placement_ind) const{
+    std::vector<region_distribution::movable_cell> movable_cells;
+    std::vector<region_distribution::fixed_cell>   fixed_cells;
+
+    for(index_t i=0; i<cell_cnt(); ++i){
+        auto C = internal_netlist.get_cell(i);
+        if(C.attributes & (XMovable|YMovable)){
+            auto pos = placements_[placement_ind].positions_[i];
+            movable_cells.push_back(region_distribution::movable_cell(C.area, pos.x_, pos.y_, i));
+        }
+        else{
+            fixed_cells.push_back(region_distribution::fixed_cell(C.size, placements_[placement_ind].positions_[i]));
+        }
+    }
+
+    return region_distribution(placement_area_, movable_cells, fixed_cells);
+}
 
 
 } // namespace gp

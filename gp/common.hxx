@@ -65,7 +65,7 @@ template<typename T>
 struct box{
     T x_min_, y_min_, x_max_, y_max_;
     box(){}
-    box(T x_mn, T x_mx, T y_mn, T y_mx) : x_min_(x_mn), x_max_(x_mx), y_min_(y_mn), y_max_(y_mx){}
+    box(T x_mn, T x_mx, T y_mn, T y_mx) : x_min_(x_mn), y_min_(y_mn), x_max_(x_mx), y_max_(y_mx){}
 
     bool intersects(box<T> const o) const{
         return x_min_   < o.x_max_

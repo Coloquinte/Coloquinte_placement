@@ -72,7 +72,8 @@ struct circuit{
 
     float_t get_HPWL_wirelength(index_t placement_ind) const;
 
-    region_distribution get_rough_legalizer() const;
+    region_distribution get_rough_legalizer(index_t placement_ind) const;
+    void get_positions_from_legalizer(index_t placement_ind, region_distribution & legalizer);
 
     index_t cell_cnt() const{ return internal_netlist.cell_cnt(); }
     index_t net_cnt() const{ return internal_netlist.net_cnt(); }

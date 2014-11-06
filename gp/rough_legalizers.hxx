@@ -27,6 +27,7 @@ class region_distribution{
     struct fixed_cell{
         box<int_t> box_;
         fixed_cell();
+        fixed_cell(point<int_t> size, point<float_t> position);
         fixed_cell(box<int_t> bx);
         /*
          * Later extension to handle whitespace with capacities different than area
@@ -40,8 +41,8 @@ class region_distribution{
         // int_t x_size, y_size; // May split cells
         index_t index_in_placement_;
 
-        movable_cell(){}
-        movable_cell(capacity_t demand, float_t x, float_t y, index_t ind) : demand_(demand), x_pos_(x), y_pos_(y), index_in_placement_(ind){}
+        movable_cell();
+        movable_cell(capacity_t demand, float_t x, float_t y, index_t ind);
     };
 
     private:
@@ -103,7 +104,6 @@ class region_distribution{
     // Reduces the number of cuts in the current solution to at most region_cnt() - 1 without loss of solution quality
     void fractions_minimization();
     void redo_bipartition(region & Ra, region & Rb);
-    std::vector<point<float_t> > get_exported_positions() const;
 
     void selfcheck() const;
     region & get_region(index_t x_coord, index_t y_coord);
@@ -148,21 +148,22 @@ class region_distribution{
     /*
      * Create and export
      *
-     * Create takes position and area infos from a global_placement object
-     *
-     * Export uses scaling of x/y coordinates
-     *    Intelligent: tries to obtain minimal disruption
-     *    But independent: illegal placement in a region is likely
+     * Export should be smart and use scaling of x/y coordinates, but currently it merely uses the region's coordinates
      */
     
-    //region_distribution(global_placement const & orig);
-    //global_placement export_global_placement() const;
-    
-    region_distribution(box<int_t> placement_area, std::vector<movable_cell> all_cells);
+    region_distribution(box<int_t> placement_area, std::vector<movable_cell> all_cells, std::vector<fixed_cell> all_obstacles = std::vector<fixed_cell>());
+    std::vector<movable_cell> export_positions() const;
 };
 
 inline region_distribution::fixed_cell::fixed_cell(){}
+inline region_distribution::fixed_cell::fixed_cell(point<int_t> size, point<float_t> position){
+    point<int_t> min = static_cast<point<int_t> >(position - static_cast<float_t>(0.5)*static_cast<point<float_t> >(size));
+    box_ = box<int_t>(min.x_, min.x_ + size.x_, min.y_, min.y_ + size.y_);
+}
 inline region_distribution::fixed_cell::fixed_cell(box<int_t> bx) : box_(bx){}
+
+inline region_distribution::movable_cell::movable_cell(){}
+inline region_distribution::movable_cell::movable_cell(capacity_t demand, float_t x, float_t y, index_t ind) : demand_(demand), x_pos_(x), y_pos_(y), index_in_placement_(ind){}
 
 inline index_t region_distribution::x_regions_cnt() const { return 1 << x_cuts_cnt_; }
 inline index_t region_distribution::y_regions_cnt() const { return 1 << y_cuts_cnt_; }

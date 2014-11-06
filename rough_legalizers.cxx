@@ -41,7 +41,7 @@ region_distribution::region::region(box<int_t> bx, std::vector<fixed_cell> obsta
         box<int_t> const B = O.box_;
         if(surface_.intersects(B)){
             box<int_t> common_surface = surface_.intersection(B);
-            obstacles_.push_back(B);
+            obstacles_.push_back(common_surface);
             capacity_ -= static_cast<capacity_t>(common_surface.x_max_ - common_surface.x_min_) * static_cast<capacity_t>(common_surface.y_max_ - common_surface.y_min_);
         }
     }
@@ -178,10 +178,13 @@ void region_distribution::region::distribute_new_cells(region & region_a, region
     std::vector<float_t> costs_a_side, costs_b_side;
     for(auto const C : cells_a_side){ costs_a_side.push_back(C.marginal_cost_); }
     for(auto const C : cells_b_side){ costs_b_side.push_back(C.marginal_cost_); }
+    
+    /*
     if(not costs_a_side.empty() and not costs_b_side.empty()){
         float_t max_left = *std::max_element(costs_a_side.begin(), costs_a_side.end()), min_right = *std::min_element(costs_b_side.begin(), costs_b_side.end());
         assert(max_left <= min_right);
     }
+    */
     
 
     region_a.cell_references_ = cells_a_side;
@@ -364,7 +367,7 @@ std::vector<point<float_t> > region_distribution::get_exported_positions() const
 }
 */
 
-region_distribution::region_distribution(box<int_t> placement_area, std::vector<movable_cell> all_cells) : placement_area_(placement_area), x_cuts_cnt_(0), y_cuts_cnt_(0), cell_list_(all_cells){
+region_distribution::region_distribution(box<int_t> placement_area, std::vector<movable_cell> all_cells, std::vector<fixed_cell> all_obstacles) : x_cuts_cnt_(0), y_cuts_cnt_(0), placement_area_(placement_area), cell_list_(all_cells){
 
     std::vector<cell_ref> references;
     for(index_t i=0; i<all_cells.size(); ++i){
@@ -376,13 +379,31 @@ region_distribution::region_distribution(box<int_t> placement_area, std::vector<
     }
 
     placement_regions_.push_back(
-        region(placement_area_, std::vector<fixed_cell>(), references)
+        region(placement_area_, all_obstacles, references)
     );
 
     selfcheck();
 }
 
+std::vector<region_distribution::movable_cell> region_distribution::export_positions() const{
+    std::vector<point<float_t> > weighted_pos(cell_list_.size(), point<float_t>(0.0, 0.0));
 
+    for(region const & R : placement_regions_){
+        for(cell_ref C : R.cell_references_){
+            weighted_pos[C.index_in_list_] = weighted_pos[C.index_in_list_] + static_cast<float_t>(C.allocated_capacity_) * point<float_t>(R.x_pos_, R.y_pos_);
+        }
+    }
+
+    std::vector<movable_cell> ret;
+    for(index_t i=0; i<cell_list_.size(); ++i){
+        movable_cell C = cell_list_[i];
+        float_t scale = static_cast<float_t>(C.demand_);
+        C.x_pos_ = weighted_pos[i].x_ / scale;
+        C.y_pos_ = weighted_pos[i].y_ / scale;
+        ret.push_back(C);
+    }
+    return ret;
+}
 
 } // Namespace gp
 } // Namespace coloquinte
