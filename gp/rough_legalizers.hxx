@@ -77,15 +77,19 @@ class region_distribution{
         region(){} // Necessary if we want to resize vectors 
         region(box<int_t> bx, std::vector<fixed_cell> obstacles, std::vector<cell_ref> cells);
     
+        static void distribute_new_cells(region & a, region & b, std::vector<cell_ref> cells);
+
         void selfcheck() const;
         void x_bipartition(region & lft, region & rgt);
         void y_bipartition(region & up , region & dwn);
+        void uniquify_references();
 
         float_t capacity() const;
         float_t allocated_capacity() const;
         float_t unused_capacity() const;
+        index_t cell_cnt() const;
+
         float_t distance(cell_ref const & C) const;
-        static void distribute_new_cells(region & a, region & b, std::vector<cell_ref> cells);
     };
 
     private:
@@ -116,6 +120,9 @@ class region_distribution{
     // Dimensions of the uniform cells superimposed on the placement region
     inline float_t x_cell_dim() const;
     inline float_t y_cell_dim() const;
+
+    inline index_t cell_cnt() const;
+    inline index_t fractional_cell_cnt() const;
     
     /*
      * Two types of cost
@@ -147,7 +154,10 @@ class region_distribution{
     
     // Tries to escape local minimas with long-distance moves to non-filled places
     void line_moves();
-    
+
+    // Try to remove duplicate fractional cells    
+    void fraction_minimization();
+
     /*
      * Create and export
      *
@@ -175,6 +185,16 @@ inline region_distribution::region & region_distribution::get_region(index_t x_c
     return placement_regions_[y_coord * x_regions_cnt() + x_coord];
 }
 
+inline index_t region_distribution::cell_cnt() const{ return cell_list_.size(); }
+inline index_t region_distribution::fractional_cell_cnt() const{
+    index_t tot_cnt = 0;
+    for(auto const & R : placement_regions_){
+        tot_cnt += R.cell_cnt();
+    }
+    return tot_cnt;
+}
+
+
 inline float_t region_distribution::region::capacity() const{ return capacity_; }
 inline float_t region_distribution::region::unused_capacity() const{ return unused_capacity_; }
 inline float_t region_distribution::region::allocated_capacity() const{
@@ -185,6 +205,7 @@ inline float_t region_distribution::region::allocated_capacity() const{
     assert(unused_capacity() + ret == capacity());
     return ret;
 }
+inline index_t region_distribution::region::cell_cnt() const{ return cell_references_.size(); }
 
 inline float_t pt_distance(point<float_t> const a, point<float_t> const b){
     float_t manhattan = std::abs(a.x_ - b.x_) + std::abs(a.y_ - b.y_);

@@ -16,6 +16,26 @@ void region_distribution::region::selfcheck() const{
     assert(total_allocated + unused_capacity_ == capacity_);
 }
 
+void region_distribution::region::uniquify_references(){
+    std::sort(cell_references_.begin(), cell_references_.end(), [](cell_ref a, cell_ref b){ return a.index_in_list_ < b.index_in_list_; });
+
+    std::vector<cell_ref> new_refs;
+    if(cell_references_.size() >= 1){
+        cell_ref prev_cell = cell_references_[0];
+        for(auto it = cell_references_.begin()+1; it != cell_references_.end(); ++it){
+            if(it->index_in_list_ == prev_cell.index_in_list_){
+                prev_cell.allocated_capacity_ += it->allocated_capacity_;
+            }
+            else{
+                new_refs.push_back(prev_cell);
+                prev_cell = *it;
+            }
+        }
+        new_refs.push_back(prev_cell);
+    }
+    std::swap(cell_references_, new_refs);
+}
+
 void region_distribution::selfcheck() const{
     for(region const & R : placement_regions_){
         R.selfcheck();
@@ -328,6 +348,10 @@ void region_distribution::redo_bipartitions(){
 }
 
 void region_distribution::fractions_minimization(){
+    for(region & R : placement_regions_){
+        R.uniquify_references();
+    }
+
     // Find cycles of cut cells, then find a spanning tree to reallocate the cells
     // TODO
 }
