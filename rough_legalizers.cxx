@@ -237,17 +237,33 @@ void region_distribution::quadpartition(){
     y_bipartition();
 }
 
-float_t region_distribution::cost() const{
+float_t region_distribution::basic_cost() const{
     double res = 0.0;
     for(region const & R : placement_regions_){
         for(cell_ref const & C : R.cell_references_){
             res += static_cast<double>(C.allocated_capacity_) * static_cast<double>(R.distance(C));
         }
     }
-
     return res;
 }
+float_t region_distribution::cost() const{
+    std::vector<movable_cell> new_pos = export_positions();
 
+    double res = 0.0;
+    for(index_t i=0; i<cell_list_.size(); ++i){
+        res += static_cast<double>(cell_list_[i].demand_) * static_cast<double>(pt_distance(new_pos[i].pos_, cell_list_[i].pos_));
+    }
+    return res;
+}
+float_t region_distribution::spread_cost() const{
+    std::vector<movable_cell> new_pos = export_spread_positions();
+
+    double res = 0.0;
+    for(index_t i=0; i<cell_list_.size(); ++i){
+        res += static_cast<double>(cell_list_[i].demand_) * static_cast<double>(pt_distance(new_pos[i].pos_, cell_list_[i].pos_));
+    }
+    return res;
+}
 void region_distribution::redo_bipartition(region_distribution::region & Ra, region_distribution::region & Rb){
     std::vector<cell_ref> cells;
     for(cell_ref C : Ra.cell_references_){ cells.push_back(C); }
@@ -403,6 +419,56 @@ std::vector<region_distribution::movable_cell> region_distribution::export_posit
     }
     return ret;
 }
+
+std::vector<region_distribution::movable_cell> region_distribution::export_spread_positions() const{
+    std::vector<point<float_t> > weighted_pos(cell_list_.size(), point<float_t>(0.0, 0.0));
+
+    for(region const & R : placement_regions_){
+        {
+            std::vector<cell_ref> x_cells = R.cell_references_;
+            std::sort(x_cells.begin(), x_cells.end(), [](cell_ref const a, cell_ref const b){ return a.pos_.x_ < b.pos_.x_; });
+
+            float_t min_x_pos = static_cast<float_t>(R.surface_.x_min_),
+                    max_x_pos = static_cast<float_t>(R.surface_.x_max_),
+                    tot_cap = static_cast<float_t>(R.allocated_capacity());
+            
+            float_t prop = 0.0;
+            for(cell_ref const C : x_cells){
+                float_t cap = static_cast<float_t>(C.allocated_capacity_);
+                float_t added_prop = cap / tot_cap;
+                float_t cur_prop = prop + 0.5 * added_prop;
+                weighted_pos[C.index_in_list_].x_ += cap * (cur_prop * max_x_pos + (1.0 - cur_prop) * min_x_pos);
+                prop += added_prop;
+            }
+        }
+        {
+            std::vector<cell_ref> y_cells = R.cell_references_;
+            std::sort(y_cells.begin(), y_cells.end(), [](cell_ref const a, cell_ref const b){ return a.pos_.y_ < b.pos_.y_; });
+
+            float_t min_y_pos = static_cast<float_t>(R.surface_.y_min_),
+                    max_y_pos = static_cast<float_t>(R.surface_.y_max_),
+                    tot_cap = static_cast<float_t>(R.allocated_capacity());
+
+            float_t prop = 0.0;
+            for(cell_ref const C : y_cells){
+                float_t cap = static_cast<float_t>(C.allocated_capacity_);
+                float_t added_prop = cap / tot_cap;
+                float_t cur_prop = prop + 0.5 * added_prop;
+                weighted_pos[C.index_in_list_].y_ += cap * (cur_prop * max_y_pos + (1.0 - cur_prop) * min_y_pos);
+                prop += added_prop;
+            }
+        }
+    }
+
+    std::vector<movable_cell> ret;
+    for(index_t i=0; i<cell_list_.size(); ++i){
+        movable_cell C = cell_list_[i];
+        C.pos_ = ( static_cast<float_t>(1.0) / static_cast<float_t>(C.demand_) ) * weighted_pos[i];
+        ret.push_back(C);
+    }
+    return ret;
+}
+
 
 } // Namespace gp
 } // Namespace coloquinte

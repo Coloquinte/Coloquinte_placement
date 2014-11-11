@@ -84,7 +84,6 @@ class region_distribution{
         float_t capacity() const;
         float_t allocated_capacity() const;
         float_t unused_capacity() const;
-        float_t distance(point<float_t> const & P) const;
         float_t distance(cell_ref const & C) const;
         static void distribute_new_cells(region & a, region & b, std::vector<cell_ref> cells);
     };
@@ -124,8 +123,12 @@ class region_distribution{
      *    Export scaling estimation : lower bound of legalization cost
      */
     
+    float_t basic_cost() const;
     float_t cost() const;
-    float_t exported_cost() const;
+    float_t spread_cost() const;
+
+    std::vector<movable_cell> export_positions() const;
+    std::vector<movable_cell> export_spread_positions() const;
     
     /*
      * Further partitions
@@ -152,7 +155,6 @@ class region_distribution{
      */
     
     region_distribution(box<int_t> placement_area, std::vector<movable_cell> all_cells, std::vector<fixed_cell> all_obstacles = std::vector<fixed_cell>());
-    std::vector<movable_cell> export_positions() const;
 };
 
 inline region_distribution::fixed_cell::fixed_cell(){}
@@ -184,12 +186,12 @@ inline float_t region_distribution::region::allocated_capacity() const{
     return ret;
 }
 
-inline float_t region_distribution::region::distance(point<float_t> const & P) const{
-    float_t manhattan = std::abs(pos_.x_ - P.x_) + std::abs(pos_.y_ - P.y_);
+inline float_t pt_distance(point<float_t> const a, point<float_t> const b){
+    float_t manhattan = std::abs(a.x_ - b.x_) + std::abs(a.y_ - b.y_);
     return manhattan * manhattan;
 }
 inline float_t region_distribution::region::distance(region_distribution::cell_ref const & C) const{
-    return distance(C.pos_);
+    return pt_distance(pos_, C.pos_);
 }
 
 
