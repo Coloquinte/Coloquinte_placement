@@ -13,7 +13,7 @@ void region_distribution::region::selfcheck() const{
         total_allocated += c.allocated_capacity_;
         assert(c.allocated_capacity_ > 0);
     }
-    assert(total_allocated + unused_capacity_ == capacity_);
+    assert(total_allocated <= capacity_);
 }
 
 void region_distribution::region::uniquify_references(){
@@ -66,12 +66,6 @@ region_distribution::region::region(box<int_t> bx, std::vector<fixed_cell> obsta
             capacity_ -= static_cast<capacity_t>(common_surface.x_max_ - common_surface.x_min_) * static_cast<capacity_t>(common_surface.y_max_ - common_surface.y_min_);
         }
     }
-
-    unused_capacity_ = capacity_;
-    for(auto const & C : cell_references_){
-        assert(unused_capacity_ >= C.allocated_capacity_);
-        unused_capacity_ -= C.allocated_capacity_;
-    }
 }
 
 void region_distribution::region::x_bipartition(region & lft, region & rgt){
@@ -88,7 +82,6 @@ void region_distribution::region::x_bipartition(region & lft, region & rgt){
     distribute_new_cells(lft, rgt, cell_references_);
 
     assert(lft.allocated_capacity() + rgt.allocated_capacity() == allocated_capacity());
-    assert(lft.unused_capacity() + rgt.unused_capacity() == unused_capacity());
     assert(lft.capacity() + rgt.capacity() == capacity());
 }
 
@@ -106,7 +99,6 @@ void region_distribution::region::y_bipartition(region & up, region & dwn){
     distribute_new_cells(up, dwn, cell_references_);
 
     assert(up.allocated_capacity() + dwn.allocated_capacity() == allocated_capacity());
-    assert(up.unused_capacity() + dwn.unused_capacity() == unused_capacity());
     assert(up.capacity() + dwn.capacity() == capacity());
 }
 
@@ -154,7 +146,10 @@ void region_distribution::region::distribute_new_cells(region & region_a, region
     }
     } // Block
 
-    std::vector<cell_ref> cells_a_side, cells_b_side;
+    std::vector<cell_ref> & cells_a_side = region_a.cell_references_;
+    std::vector<cell_ref> & cells_b_side = region_b.cell_references_;
+    cells_a_side.clear();
+    cells_b_side.clear();
     if(preference_limit >= b_capacity_limit and preference_limit <= a_capacity_limit){
         cells_a_side.insert(cells_a_side.end(), cells.begin(), cells.begin() + preference_limit);
         cells_b_side.insert(cells_b_side.end(), cells.begin() + preference_limit, cells.end());
@@ -174,6 +169,9 @@ void region_distribution::region::distribute_new_cells(region & region_a, region
             allocated_to_a_part = remaining_capacity_a;
         }
 
+        cells_a_side.reserve( cut_position             +1);
+        cells_b_side.reserve(cells.size()-cut_position +1);
+
         cells_a_side.insert(cells_a_side.end(), cells.begin(), cells.begin() + cut_position);
 
         cell_ref cell_cut_a = cells[cut_position], cell_cut_b = cells[cut_position];
@@ -184,36 +182,6 @@ void region_distribution::region::distribute_new_cells(region & region_a, region
 
         cells_b_side.insert(cells_b_side.end(), cells.begin() + cut_position+1, cells.end());
     }
-
-    capacity_t unused_capacity_a = region_a.capacity_;
-    capacity_t unused_capacity_b = region_b.capacity_;
-
-    for(cell_ref const & c : cells_a_side){
-        unused_capacity_a -= c.allocated_capacity_;
-    }
-    for(cell_ref const & c : cells_b_side){
-        unused_capacity_b -= c.allocated_capacity_;
-    }
-    
-    // Verify that the cells have been correctly handled
-    std::vector<float_t> costs_a_side, costs_b_side;
-    for(auto const C : cells_a_side){ costs_a_side.push_back(C.marginal_cost_); }
-    for(auto const C : cells_b_side){ costs_b_side.push_back(C.marginal_cost_); }
-    
-    /*
-    if(not costs_a_side.empty() and not costs_b_side.empty()){
-        float_t max_left = *std::max_element(costs_a_side.begin(), costs_a_side.end()), min_right = *std::min_element(costs_b_side.begin(), costs_b_side.end());
-        assert(max_left <= min_right);
-    }
-    */
-    
-
-    region_a.cell_references_ = cells_a_side;
-    region_b.cell_references_ = cells_b_side;
-
-    region_a.unused_capacity_ = unused_capacity_a;
-    region_b.unused_capacity_ = unused_capacity_b;
-
 }
 
 void region_distribution::x_bipartition(){
@@ -230,7 +198,6 @@ void region_distribution::x_bipartition(){
             old_placement_regions[i].x_bipartition(get_region(2*x, y), get_region(2*x+1, y));
         }
     }
-    selfcheck();
 }
 
 void region_distribution::y_bipartition(){
@@ -247,7 +214,6 @@ void region_distribution::y_bipartition(){
             old_placement_regions[i].y_bipartition(get_region(x, 2*y), get_region(x, 2*y+1));
         }
     }
-    selfcheck();
 }
 
 
@@ -286,8 +252,9 @@ float_t region_distribution::spread_cost() const{
 }
 void region_distribution::redo_bipartition(region_distribution::region & Ra, region_distribution::region & Rb){
     std::vector<cell_ref> cells;
-    for(cell_ref C : Ra.cell_references_){ cells.push_back(C); }
-    for(cell_ref C : Rb.cell_references_){ cells.push_back(C); }
+    cells.reserve(Ra.cell_references_.size()+Rb.cell_references_.size());
+    cells.insert(cells.end(), Ra.cell_references_.begin(), Ra.cell_references_.end());
+    cells.insert(cells.end(), Rb.cell_references_.begin(), Rb.cell_references_.end());
 
     region::distribute_new_cells(Ra, Rb, cells);
 }
@@ -343,8 +310,6 @@ void region_distribution::redo_bipartitions(){
             redo_bipartition(get_region(x, y), get_region(x+1, y));
         }
     }
-    
-    selfcheck();
 }
 
 void region_distribution::fractions_minimization(){
@@ -355,58 +320,6 @@ void region_distribution::fractions_minimization(){
     // Find cycles of cut cells, then find a spanning tree to reallocate the cells
     // TODO
 }
-
-/*
-std::vector<point<float_t> > region_distribution::get_exported_positions() const{
-    std::vector<point<float_t> > weighted_pos(cell_list_.size(), point<float_t>(0.0, 0.0));
-
-    struct tmp_cell_ref{
-        float_t pos;
-        index_t ind;
-        capacity_t cap;
-
-        bool operator<(tmp_cell_ref const o) const{ return pos < o.pos; }
-        tmp_cell_ref(float_t p, capacity_t c, index_t i) : pos(p), ind(i), cap(c){}
-    };
-
-    for(region const & R : placement_regions_){
-        std::vector<point<float_t> > new_pos(R.cell_references_.size());
-
-        { // Block
-            std::vector<tmp_cell_ref> all_ref_x;
-            for(index_t i=0; i<R.cell_references_.size(); ++i){
-                all_ref_x.push_back(tmp_cell_ref(R.cell_references_[i].x_pos_, R.cell_references[i].allocated_capacity_, R.cell_references[i].index_in_list_));
-            }
-            std::sort(all_ref_x.begin(), all_ref_x.end());
-            
-            for(tmp_cell_ref const C : all_ref_x){
-            }
-        } // Block
-
-        { // Block
-            std::vector<tmp_cell_ref> all_ref_y;
-            for(index_t i=0; i<R.cell_references_.size(); ++i){
-                all_ref_y.push_back(tmp_cell_ref(R.cell_references_[i].y_pos_, R.cell_references[i].allocated_capacity_, R.cell_references[i].index_in_list_));
-            }
-            std::sort(all_ref_y.begin(), all_ref_y.end());
-            float_t begin = surface.y_min_, end = surface_.y_max_;
-            capacity_t used_cap = 0;
-            for(tmp_cell_ref const C : all_ref_y){
-                float_t new_pos = ;
-                used_cap += C.cap;
-                weighted_pos[C.ind].y_ += new_pos * C.cap;
-            }
-        } // Block
-    }
-
-    for(index_t i=0; i<weighted_pos.size(); ++i){
-        float_t cap = static_cast<float_t>(cell_list_[i].demand_);
-        weighted_pos[i] = point<float_t>(weighted_pos[i].x_/cap, weighted_pos[i].y_/cap);
-    }
-
-    return weighted_pos;
-}
-*/
 
 region_distribution::region_distribution(box<int_t> placement_area, std::vector<movable_cell> all_cells, std::vector<fixed_cell> all_obstacles) : x_cuts_cnt_(0), y_cuts_cnt_(0), placement_area_(placement_area), cell_list_(all_cells){
 
@@ -422,8 +335,6 @@ region_distribution::region_distribution(box<int_t> placement_area, std::vector<
     placement_regions_.push_back(
         region(placement_area_, all_obstacles, references)
     );
-
-    selfcheck();
 }
 
 std::vector<region_distribution::movable_cell> region_distribution::export_positions() const{

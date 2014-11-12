@@ -65,8 +65,7 @@ class region_distribution{
     
     struct region{
         public:
-        capacity_t capacity_, // ==area; No FP!!! 
-            unused_capacity_;
+        capacity_t capacity_; // ==area; No FP!!! 
         point<float_t> pos_;
     
         box<int_t> surface_;
@@ -196,13 +195,12 @@ inline index_t region_distribution::fractional_cell_cnt() const{
 
 
 inline float_t region_distribution::region::capacity() const{ return capacity_; }
-inline float_t region_distribution::region::unused_capacity() const{ return unused_capacity_; }
+inline float_t region_distribution::region::unused_capacity() const{ return capacity() - allocated_capacity(); }
 inline float_t region_distribution::region::allocated_capacity() const{
     capacity_t ret = 0;
     for(cell_ref const C : cell_references_){
        ret += C.allocated_capacity_; 
     }
-    assert(unused_capacity() + ret == capacity());
     return ret;
 }
 inline index_t region_distribution::region::cell_cnt() const{ return cell_references_.size(); }
