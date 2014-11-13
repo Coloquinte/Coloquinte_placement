@@ -35,12 +35,13 @@ struct point{
     point(T x, T y): x_(x), y_(y){}
 
     template<typename S>
-    point<S> cast() const{
+    operator point<S>() const{
         return point<S>(static_cast<S>(x_), static_cast<S>(y_));
     }
-    template<typename S>
-    operator point<S>() const{
-        return cast<S>();
+
+    void operator+=(point<T> const o){
+        x_ += o.x_;
+        y_ += o.y_;
     }
 };
 
@@ -80,6 +81,11 @@ struct box{
             std::max(y_min_, o.y_min_),
             std::min(y_max_, o.y_max_)
         );
+    }
+
+    template<typename S>
+    operator box<S>() const{
+        return box<S>(static_cast<S>(x_min_), static_cast<S>(x_max_), static_cast<S>(y_min_), static_cast<S>(y_max_));
     }
 };
 

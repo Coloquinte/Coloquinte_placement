@@ -355,43 +355,99 @@ std::vector<region_distribution::movable_cell> region_distribution::export_posit
     return ret;
 }
 
+struct OSRP_task{
+    float_t size;
+    float_t goal_pos;
+    float_t weight;
+    index_t orig;
+    OSRP_task(float_t p, float_t s, float_t w, index_t i) : size(s), goal_pos(p), weight(w), orig(i) {}
+    OSRP_task(){}
+};
+
+std::vector<float_t> get_optimal_quadratic_pos(std::vector<OSRP_task> cells, float_t pos_begin, float_t pos_end){
+
+    if(cells.empty()){ return std::vector<float_t>(); }
+
+    struct OSRP_cluster{
+        index_t begin, end;
+        float_t pos, size;
+        float_t weight;
+        OSRP_cluster(index_t b, index_t e, float_t p, float_t s, float_t w) : begin(b), end(e), pos(p), size(s), weight(w) {}
+        void merge(OSRP_cluster const o){
+            begin = o.begin;
+            pos = (weight * pos + o.weight * o.pos) / (weight + o.weight);
+            size += o.size;
+            weight += o.weight;
+        }
+    };
+
+    std::sort(cells.begin(), cells.end(), [](OSRP_task a, OSRP_task b){ return a.goal_pos < b.goal_pos; });
+
+    // Modify the goal pos to get absolute goal positions between pos_begin and pos_end - sum_sizes
+    float_t sum_sizes = 0.0;
+    for(auto & c : cells){
+        c.goal_pos -= sum_sizes;
+        sum_sizes += c.size;
+    }
+    float_t abs_begin = pos_begin + 0.5 * cells[0].size; // First cell must be far enough from the beginning
+    float_t abs_end = pos_end - sum_sizes + 0.5 * cells[0].size; // Last cell must be far enough from the end
+    for(auto & c : cells){
+        c.goal_pos = std::max(c.goal_pos, abs_begin);
+        c.goal_pos = std::min(c.goal_pos, abs_end);
+    }
+
+    std::vector<OSRP_cluster> clusters;
+    for(index_t i=0; i<cells.size(); ++i){
+        OSRP_cluster to_add(
+            i, i,
+            cells[i].goal_pos,
+            cells[i].size, cells[i].weight
+        );
+        while(not clusters.empty() and (clusters.back().pos >= to_add.pos)){
+            to_add.merge(clusters.back());
+            clusters.pop_back();
+        }
+
+        clusters.push_back(to_add);
+    }
+
+    std::vector<float_t> ret(cells.size(), 0.0);
+    // For every cell, recover its true position from the absolute position of a cluster
+    float_t sum_prev_sizes = 0.0;
+    for(OSRP_cluster cur : clusters){
+        for(index_t i=cur.begin; i <= cur.end; ++i){
+            ret[cells[i].orig] = cur.pos + sum_prev_sizes;
+            sum_prev_sizes += cells[i].size;
+        }
+    }
+    return ret;
+}
+
+
+
+
 std::vector<region_distribution::movable_cell> region_distribution::export_spread_positions() const{
     std::vector<point<float_t> > weighted_pos(cell_list_.size(), point<float_t>(0.0, 0.0));
 
     for(region const & R : placement_regions_){
-        {
-            std::vector<cell_ref> x_cells = R.cell_references_;
-            std::sort(x_cells.begin(), x_cells.end(), [](cell_ref const a, cell_ref const b){ return a.pos_.x_ < b.pos_.x_; });
+        index_t n = R.cell_references_.size();
+        float_t total_capacity = static_cast<float_t>(R.capacity());
+        box<float_t> surface = static_cast<box<float_t> >(R.surface_);
 
-            float_t min_x_pos = static_cast<float_t>(R.surface_.x_min_),
-                    max_x_pos = static_cast<float_t>(R.surface_.x_max_),
-                    tot_cap = static_cast<float_t>(R.allocated_capacity());
-            
-            float_t prop = 0.0;
-            for(cell_ref const C : x_cells){
-                float_t cap = static_cast<float_t>(C.allocated_capacity_);
-                float_t added_prop = cap / tot_cap;
-                float_t cur_prop = prop + 0.5 * added_prop;
-                weighted_pos[C.index_in_list_].x_ += cap * (cur_prop * max_x_pos + (1.0 - cur_prop) * min_x_pos);
-                prop += added_prop;
-            }
+        std::vector<OSRP_task> x_cells(n), y_cells(n);
+        for(index_t i=0; i<n; ++i){
+            point<float_t> pt = R.cell_references_[i].pos_;
+            float_t cap = static_cast<float_t>(R.cell_references_[i].allocated_capacity_);
+            x_cells[i] = OSRP_task(pt.x_, cap/total_capacity * (surface.x_max_ - surface.x_min_), 1.0, i);
+            y_cells[i] = OSRP_task(pt.y_, cap/total_capacity * (surface.y_max_ - surface.y_min_), 1.0, i);
         }
-        {
-            std::vector<cell_ref> y_cells = R.cell_references_;
-            std::sort(y_cells.begin(), y_cells.end(), [](cell_ref const a, cell_ref const b){ return a.pos_.y_ < b.pos_.y_; });
+        std::vector<float_t> x_ret = get_optimal_quadratic_pos(x_cells, surface.x_min_, surface.x_max_);
+        std::vector<float_t> y_ret = get_optimal_quadratic_pos(y_cells, surface.y_min_, surface.y_max_);
 
-            float_t min_y_pos = static_cast<float_t>(R.surface_.y_min_),
-                    max_y_pos = static_cast<float_t>(R.surface_.y_max_),
-                    tot_cap = static_cast<float_t>(R.allocated_capacity());
-
-            float_t prop = 0.0;
-            for(cell_ref const C : y_cells){
-                float_t cap = static_cast<float_t>(C.allocated_capacity_);
-                float_t added_prop = cap / tot_cap;
-                float_t cur_prop = prop + 0.5 * added_prop;
-                weighted_pos[C.index_in_list_].y_ += cap * (cur_prop * max_y_pos + (1.0 - cur_prop) * min_y_pos);
-                prop += added_prop;
-            }
+        for(index_t i=0; i<n; ++i){
+            weighted_pos[R.cell_references_[i].index_in_list_] +=
+                  static_cast<float_t>(R.cell_references_[i].allocated_capacity_)
+                * point<float_t>(x_ret[i], y_ret[i]);
         }
     }
 
