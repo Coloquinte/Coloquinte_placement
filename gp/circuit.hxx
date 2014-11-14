@@ -57,12 +57,12 @@ point<linear_system> get_star_linear_system  (netlist const & circuit, placement
 point<linear_system> get_MST_linear_system   (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s);
 
 // Additional forces
-point<linear_system> get_pulling_forces (netlist const & circuit, placement_t const & pl, float_t strength);
+point<linear_system> get_pulling_forces (netlist const & circuit, placement_t const & pl, float_t typical_distance, float_t typical_area);
 
 // Solve the final linear system
 void get_result(netlist const & circuit, placement_t & pl, point<linear_system> & L, float_t tol);
 
-// Wirelength-related stuff
+// Cost-related stuff, whether wirelength or disruption
 float_t get_HPWL_wirelength(netlist const & circuit, placement_t const & pl);
 
 // Legalizer-related stuff

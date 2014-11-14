@@ -205,7 +205,7 @@ inline index_t region_distribution::region::cell_cnt() const{ return cell_refere
 
 inline float_t pt_distance(point<float_t> const a, point<float_t> const b){
     float_t manhattan = std::abs(a.x_ - b.x_) + std::abs(a.y_ - b.y_);
-    return manhattan * manhattan;
+    return manhattan * (manhattan + (float) 10000.0);
 }
 inline float_t region_distribution::region::distance(region_distribution::cell_ref const & C) const{
     return pt_distance(pos_, C.pos_);

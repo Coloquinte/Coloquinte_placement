@@ -158,6 +158,24 @@ void get_result(netlist const & circuit, placement_t & pl, point<linear_system> 
     }
 }
 
+point<linear_system> get_pulling_forces (netlist const & circuit, placement_t const & pl, float_t typical_distance, float_t typical_area){
+    point<linear_system> L = empty_linear_systems(circuit, pl);
+    float_t typical_force = 1.0 / (std::sqrt(typical_area) * typical_distance); // Normalize to obtain force 1 at typical_distance for cell of area typical_area
+    for(index_t i=0; i<pl.cell_cnt(); ++i){
+        L.x_.add_anchor(
+            typical_force * std::sqrt( static_cast<float_t>(circuit.get_cell(i).area) ),
+            i, pl.positions_[i].x_
+        );
+        L.y_.add_anchor(
+            typical_force * std::sqrt( static_cast<float_t>(circuit.get_cell(i).area) ),
+            i, pl.positions_[i].y_
+        );
+    }
+    
+
+    return L;
+}
+
 region_distribution get_rough_legalizer(netlist const & circuit, placement_t const & pl, box<int_t> surface){
     std::vector<region_distribution::movable_cell> movable_cells;
     std::vector<region_distribution::fixed_cell>   fixed_cells;

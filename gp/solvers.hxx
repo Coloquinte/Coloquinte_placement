@@ -23,8 +23,8 @@ class linear_system{
     public:
     void add_triplet(index_t row, index_t col, float_t val){ matrix_.push_back(matrix_triplet(row, col, val)); }
 
-    linear_system operator+(linear_system const & o){
-        if(o.target_.size() != target_.size()){ throw std::runtime_error("Mismatched system size"); }
+    linear_system operator+(linear_system const & o) const{
+        if(o.target_.size() != target_.size()){ throw std::runtime_error("Mismatched system sizes"); }
         linear_system ret(size());
 
         ret.matrix_ = matrix_;
@@ -68,6 +68,15 @@ class linear_system{
         float_t force = scale / std::max(std::abs(cell_pos - fixed_pos), tol);
         add_triplet(c, c, force);
         add_doublet(c, force * (fixed_pos-offs));
+    }
+
+    void add_anchor(
+        float_t scale,
+        index_t c,
+        float_t pos
+    ){
+        add_triplet(c, c, scale);
+        add_doublet(c, scale*pos);
     }
 
     linear_system(index_t s) : target_(s, 0.0){}
