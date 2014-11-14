@@ -1,11 +1,9 @@
 #include "gp/circuit.hxx"
 
-#include <cassert>
-
 namespace coloquinte{
 namespace gp{
 
-void add_forces(circuit::pin_1D const p1, circuit::pin_1D const p2, linear_system & L, float_t tol, float_t scale){
+void add_forces(pin_1D const p1, pin_1D const p2, linear_system & L, float_t tol, float_t scale){
     if(p1.movable && p2.movable){
         L.add_force(
             tol,
@@ -33,24 +31,15 @@ void add_forces(circuit::pin_1D const p1, circuit::pin_1D const p2, linear_syste
     }
 }
 
-circuit::circuit(box<int_t> placement_surface, std::vector<point<float_t> > cell_positions, std::vector<point<float_t> > cell_orientations,
-                 std::vector<temporary_cell> all_cells, std::vector<temporary_net> all_nets, std::vector<temporary_pin> all_pins)
-            : internal_netlist(all_cells, all_nets, all_pins), placement_area_(placement_surface){
-    placement_t common;
-    common.positions_ = cell_positions;
-    common.orientations_ = cell_orientations;
-    placements_.resize(2, common);
-}
-
-point<linear_system> circuit::empty_linear_systems() const{
-    point<linear_system> ret = point<linear_system>(linear_system(cell_cnt()), linear_system(cell_cnt()));
+point<linear_system> empty_linear_systems(netlist const & circuit, placement_t const & pl){
+    point<linear_system> ret = point<linear_system>(linear_system(circuit.cell_cnt()), linear_system(circuit.cell_cnt()));
 
     /*
     for(index_t i=0; i<cell_cnt(); ++i){
-        if( (XMovable & internal_netlist.get_cell(i).attributes) == 0){
+        if( (XMovable & circuit.get_cell(i).attributes) == 0){
             ret.x_.add_triplet(i, i, 1.0);
         }
-        if( (YMovable & internal_netlist.get_cell(i).attributes) == 0){
+        if( (YMovable & circuit.get_cell(i).attributes) == 0){
             ret.y_.add_triplet(i, i, 1.0);
         }
     }
@@ -59,32 +48,33 @@ point<linear_system> circuit::empty_linear_systems() const{
     return ret;
 }
 
-std::vector<circuit::pin_2D>         circuit::get_pins_2D(index_t placement_ind, index_t net_ind) const{
+std::vector<pin_2D>         get_pins_2D(netlist const & circuit, placement_t const & pl, index_t net_ind){
     std::vector<pin_2D> ret;
-    for(auto p : internal_netlist.get_net(net_ind)){
-        point<float_t> offs = static_cast<point<float_t> >(p.offset) * placements_[placement_ind].orientations_[p.cell_ind];
-        point<float_t> pos  = static_cast<point<float_t> >(offs)     + placements_[placement_ind].positions_[p.cell_ind];
+    for(auto p : circuit.get_net(net_ind)){
+        point<float_t> offs = static_cast<point<float_t> >(p.offset) * pl.orientations_[p.cell_ind];
+        point<float_t> pos  = static_cast<point<float_t> >(offs)     + pl.positions_[p.cell_ind];
 
-        bool movable = (internal_netlist.get_cell(p.cell_ind).attributes & (XMovable|YMovable)) != 0;
+        bool movable = (circuit.get_cell(p.cell_ind).attributes & (XMovable|YMovable)) != 0;
         ret.push_back(pin_2D(p.cell_ind, pos, offs, movable));
     }
     return ret;
 }
-point<std::vector<circuit::pin_1D> > circuit::get_pins_1D(index_t placement_ind, index_t net_ind) const{
-    point<std::vector<circuit::pin_1D> > ret;
-    for(auto p : internal_netlist.get_net(net_ind)){
-        point<float_t> offs = static_cast<point<float_t> >(p.offset) * placements_[placement_ind].orientations_[p.cell_ind];
-        point<float_t> pos  = static_cast<point<float_t> >(offs)     + placements_[placement_ind].positions_[p.cell_ind];
 
-        bool x_movable = (internal_netlist.get_cell(p.cell_ind).attributes & XMovable) != 0;
-        bool y_movable = (internal_netlist.get_cell(p.cell_ind).attributes & YMovable) != 0;
+point<std::vector<pin_1D> > get_pins_1D(netlist const & circuit, placement_t const & pl, index_t net_ind){
+    point<std::vector<pin_1D> > ret;
+    for(auto p : circuit.get_net(net_ind)){
+        point<float_t> offs = static_cast<point<float_t> >(p.offset) * pl.orientations_[p.cell_ind];
+        point<float_t> pos  = static_cast<point<float_t> >(offs)     + pl.positions_[p.cell_ind];
+
+        bool x_movable = (circuit.get_cell(p.cell_ind).attributes & XMovable) != 0;
+        bool y_movable = (circuit.get_cell(p.cell_ind).attributes & YMovable) != 0;
         ret.x_.push_back(pin_1D(p.cell_ind, pos.x_, offs.x_, x_movable));
         ret.y_.push_back(pin_1D(p.cell_ind, pos.y_, offs.y_, y_movable));
     }
     return ret;
 }
 
-void get_HPWLF(std::vector<circuit::pin_1D> const & pins, linear_system & L, float_t tol){
+void get_HPWLF(std::vector<pin_1D> const & pins, linear_system & L, float_t tol){
     if(pins.size() >= 2){
         auto min_elt = std::min_element(pins.begin(), pins.end()), max_elt = std::max_element(pins.begin(), pins.end());
 
@@ -99,38 +89,38 @@ void get_HPWLF(std::vector<circuit::pin_1D> const & pins, linear_system & L, flo
     }
 }
 
-float_t circuit::get_HPWL_wirelength(index_t placement_ind) const{
+float_t get_HPWL_wirelength(netlist const & circuit, placement_t const & pl){
     float_t sum = 0.0;
-    for(index_t i=0; i<net_cnt(); ++i){
-        auto pins = get_pins_1D(placement_ind, i);
+    for(index_t i=0; i<circuit.net_cnt(); ++i){
+        auto pins = get_pins_1D(circuit, pl, i);
         auto minmaxX = std::minmax_element(pins.x_.begin(), pins.x_.end()), minmaxY = std::minmax_element(pins.y_.begin(), pins.y_.end());
         sum += ((minmaxX.second->pos - minmaxX.first->pos) + (minmaxY.second->pos - minmaxY.first->pos));
     }
     return sum;
 }
 
-point<linear_system> circuit::get_HPWLF_linear_system (float_t tol, index_t placement_ind, index_t min_s, index_t max_s) const{
-    point<linear_system> L = empty_linear_systems();
-    for(index_t i=0; i<net_cnt(); ++i){
-        auto pins = get_pins_1D(placement_ind, i);
-        get_HPWLF(pins.x_, L.y_, tol);
+point<linear_system> get_HPWLF_linear_system (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s){
+    point<linear_system> L = empty_linear_systems(circuit, pl);
+    for(index_t i=0; i<circuit.net_cnt(); ++i){
+        auto pins = get_pins_1D(circuit, pl, i);
+        get_HPWLF(pins.x_, L.x_, tol);
         get_HPWLF(pins.y_, L.y_, tol);
     }
     return L;
 }
 
-void get_HPWLR(std::vector<circuit::pin_1D> const & pins, linear_system & L, float_t tol){
-    std::vector<circuit::pin_1D> sorted_pins = pins;
+void get_HPWLR(std::vector<pin_1D> const & pins, linear_system & L, float_t tol){
+    std::vector<pin_1D> sorted_pins = pins;
     std::sort(sorted_pins.begin(), sorted_pins.end());
     for(index_t i=0; i+1<sorted_pins.size(); ++i){
         add_forces(sorted_pins[i], sorted_pins[i+1], L, tol, 1.0);
     }
 }
 
-point<linear_system> circuit::get_HPWLR_linear_system (float_t tol, index_t placement_ind, index_t min_s, index_t max_s) const{
-    point<linear_system> L = empty_linear_systems();
-    for(index_t i=0; i<net_cnt(); ++i){
-        auto pins = get_pins_1D(placement_ind, i);
+point<linear_system> get_HPWLR_linear_system (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s){
+    point<linear_system> L = empty_linear_systems(circuit, pl);
+    for(index_t i=0; i<circuit.net_cnt(); ++i){
+        auto pins = get_pins_1D(circuit, pl, i);
         get_HPWLR(pins.x_, L.y_, tol);
         get_HPWLR(pins.y_, L.y_, tol);
     }
@@ -138,16 +128,16 @@ point<linear_system> circuit::get_HPWLR_linear_system (float_t tol, index_t plac
 }
 
 
-void circuit::get_result(float_t tol, index_t placement_ind, point<linear_system> & L){
+void get_result(netlist const & circuit, placement_t & pl, point<linear_system> & L, float_t tol){
     std::vector<float_t> x_sol, y_sol;
-    std::vector<float_t> x_guess(cell_cnt()), y_guess(cell_cnt());
+    std::vector<float_t> x_guess(pl.cell_cnt()), y_guess(pl.cell_cnt());
     
     assert(L.x_.size() == x_guess.size());
     assert(L.y_.size() == y_guess.size());
 
-    for(index_t i=0; i<cell_cnt(); ++i){
-        x_guess[i] = placements_[placement_ind].positions_[i].x_;
-        y_guess[i] = placements_[placement_ind].positions_[i].y_;
+    for(index_t i=0; i<pl.cell_cnt(); ++i){
+        x_guess[i] = pl.positions_[i].x_;
+        y_guess[i] = pl.positions_[i].y_;
     }
     
     #pragma omp task shared(L) shared(x_sol)
@@ -158,31 +148,39 @@ void circuit::get_result(float_t tol, index_t placement_ind, point<linear_system
     //y_sol = L.y_.solve_cholesky();
     #pragma omp taskwait
     
-    for(index_t i=0; i<cell_cnt(); ++i){
-        // TODO: correct formulation
-        if( (internal_netlist.get_cell(i).attributes & (XMovable|YMovable)) != 0){
-            placements_[placement_ind].positions_[i] = point<float_t>(x_sol[i], y_sol[i]);
+    for(index_t i=0; i<pl.cell_cnt(); ++i){
+        if( (circuit.get_cell(i).attributes & XMovable) != 0){
+            pl.positions_[i].x_ = x_sol[i];
+        }
+        if( (circuit.get_cell(i).attributes & YMovable) != 0){
+            pl.positions_[i].y_ = y_sol[i];
         }
     }
 }
 
-region_distribution circuit::get_rough_legalizer(index_t placement_ind) const{
+region_distribution get_rough_legalizer(netlist const & circuit, placement_t const & pl, box<int_t> surface){
     std::vector<region_distribution::movable_cell> movable_cells;
     std::vector<region_distribution::fixed_cell>   fixed_cells;
 
-    for(index_t i=0; i<cell_cnt(); ++i){
-        auto C = internal_netlist.get_cell(i);
+    for(index_t i=0; i<circuit.cell_cnt(); ++i){
+        auto C = circuit.get_cell(i);
         if(C.attributes & (XMovable|YMovable)){
-            movable_cells.push_back(region_distribution::movable_cell(C.area, placements_[placement_ind].positions_[i], i));
+            movable_cells.push_back(region_distribution::movable_cell(C.area, pl.positions_[i], i));
         }
         else{
-            fixed_cells.push_back(region_distribution::fixed_cell(C.size, placements_[placement_ind].positions_[i]));
+            fixed_cells.push_back(region_distribution::fixed_cell(C.size, pl.positions_[i]));
         }
     }
 
-    return region_distribution(placement_area_, movable_cells, fixed_cells);
+    return region_distribution(surface, movable_cells, fixed_cells);
 }
 
+void get_result(netlist const & circuit, placement_t & pl, region_distribution const & legalizer){
+    auto exportation = legalizer.export_spread_positions();
+    for(auto const C : exportation){
+        pl.positions_[C.index_in_placement_] = C.pos_;
+    }
+}
 
 } // namespace gp
 } // namespace coloquinte

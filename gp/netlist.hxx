@@ -59,6 +59,7 @@ class netlist{
 
     public:
     netlist(std::vector<temporary_cell> cells, std::vector<temporary_net> nets, std::vector<temporary_pin> all_pins);
+    netlist(){}
 
     void selfcheck() const;
 

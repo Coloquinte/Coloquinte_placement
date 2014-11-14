@@ -11,9 +11,9 @@ void region_distribution::region::selfcheck() const{
     capacity_t total_allocated = 0;
     for(cell_ref const c : cell_references_){
         total_allocated += c.allocated_capacity_;
-        assert(c.allocated_capacity_ > 0);
+        if(c.allocated_capacity_ <= 0){ abort(); }
     }
-    assert(total_allocated <= capacity_);
+    if(total_allocated > capacity_){ abort(); }
 }
 
 void region_distribution::region::uniquify_references(){
@@ -44,11 +44,11 @@ void region_distribution::selfcheck() const{
     for(region const & R : placement_regions_){
         for(cell_ref const C : R.cell_references_){
             capacities[C.index_in_list_] += C.allocated_capacity_;
-            assert(C.allocated_capacity_ > 0);
+            if(C.allocated_capacity_ <= 0){ abort(); }
         }
     }
     for(index_t i=0; i < cell_list_.size(); ++i){
-        assert(capacities[i] == cell_list_[i].demand_);
+        if(capacities[i] != cell_list_[i].demand_){ abort(); }
     }
 }
 
@@ -232,6 +232,7 @@ float_t region_distribution::basic_cost() const{
     }
     return res;
 }
+
 float_t region_distribution::cost() const{
     std::vector<movable_cell> new_pos = export_positions();
 
@@ -241,6 +242,7 @@ float_t region_distribution::cost() const{
     }
     return res;
 }
+
 float_t region_distribution::spread_cost() const{
     std::vector<movable_cell> new_pos = export_spread_positions();
 
@@ -250,6 +252,7 @@ float_t region_distribution::spread_cost() const{
     }
     return res;
 }
+
 void region_distribution::redo_bipartition(region_distribution::region & Ra, region_distribution::region & Rb){
     std::vector<cell_ref> cells;
     cells.reserve(Ra.cell_references_.size()+Rb.cell_references_.size());

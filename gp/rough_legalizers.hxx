@@ -107,7 +107,6 @@ class region_distribution{
     void fractions_minimization();
     void redo_bipartition(region & Ra, region & Rb);
 
-    void selfcheck() const;
     region & get_region(index_t x_coord, index_t y_coord);
 
     public:
@@ -158,12 +157,11 @@ class region_distribution{
     void fraction_minimization();
 
     /*
-     * Create and export
-     *
-     * Export should be smart and use scaling of x/y coordinates, but currently it merely uses the region's coordinates
+     * Manipulate
      */
     
-    region_distribution(box<int_t> placement_area, std::vector<movable_cell> all_cells, std::vector<fixed_cell> all_obstacles = std::vector<fixed_cell>());
+     void selfcheck() const;
+     region_distribution(box<int_t> placement_area, std::vector<movable_cell> all_cells, std::vector<fixed_cell> all_obstacles = std::vector<fixed_cell>());
 };
 
 inline region_distribution::fixed_cell::fixed_cell(){}
