@@ -6,8 +6,7 @@ namespace gp{
 void add_forces(pin_1D const p1, pin_1D const p2, linear_system & L, float_t tol, float_t scale){
     if(p1.movable && p2.movable){
         L.add_force(
-            tol,
-            scale,
+            tol, scale,
             p1.cell_ind, p2.cell_ind,
             p1.pos,      p2.pos,
             p1.offs,     p2.offs
@@ -79,10 +78,11 @@ void get_HPWLF(std::vector<pin_1D> const & pins, linear_system & L, float_t tol)
         auto min_elt = std::min_element(pins.begin(), pins.end()), max_elt = std::max_element(pins.begin(), pins.end());
 
         for(auto it = pins.begin(); it != pins.end(); ++it){
-            if(it != min_elt){
+            // Just comparing the iterator is poorer due to redundancies in the benchmarks!
+            if(it->cell_ind != min_elt->cell_ind){
                 add_forces(*it, *min_elt, L, tol, 1.0/(pins.size()-1));
             }
-            else if(it != max_elt){
+            else if(it->cell_ind != max_elt->cell_ind){ // Hopefully only one connexion between the min and max pins
                 add_forces(*it, *max_elt, L, tol, 1.0/(pins.size()-1));
             }
         }
@@ -158,17 +158,35 @@ void get_result(netlist const & circuit, placement_t & pl, point<linear_system> 
     }
 }
 
-point<linear_system> get_pulling_forces (netlist const & circuit, placement_t const & pl, float_t typical_distance, float_t typical_area){
+point<linear_system> get_pulling_forces (netlist const & circuit, placement_t const & pl, float_t typical_distance){
     point<linear_system> L = empty_linear_systems(circuit, pl);
-    float_t typical_force = 1.0 / (std::sqrt(typical_area) * typical_distance); // Normalize to obtain force 1 at typical_distance for cell of area typical_area
+    float_t typical_force = 1.0 / typical_distance;
     for(index_t i=0; i<pl.cell_cnt(); ++i){
         L.x_.add_anchor(
-            typical_force * std::sqrt( static_cast<float_t>(circuit.get_cell(i).area) ),
+            typical_force,
             i, pl.positions_[i].x_
         );
         L.y_.add_anchor(
-            typical_force * std::sqrt( static_cast<float_t>(circuit.get_cell(i).area) ),
+            typical_force,
             i, pl.positions_[i].y_
+        );
+    }
+    
+
+    return L;
+}
+
+point<linear_system> get_linear_pulling_forces (netlist const & circuit, placement_t const & UB_pl, placement_t const & LB_pl, float_t force, float_t min_distance){
+    point<linear_system> L = empty_linear_systems(circuit, UB_pl);
+    assert(LB_pl.cell_cnt() == UB_pl.cell_cnt());
+    for(index_t i=0; i<LB_pl.cell_cnt(); ++i){
+        L.x_.add_anchor(
+            force / (std::max(std::abs(UB_pl.positions_[i].x_ - LB_pl.positions_[i].x_), min_distance)),
+            i, UB_pl.positions_[i].x_
+        );
+        L.y_.add_anchor(
+            force / (std::max(std::abs(UB_pl.positions_[i].y_ - LB_pl.positions_[i].y_), min_distance)),
+            i, UB_pl.positions_[i].y_
         );
     }
     
