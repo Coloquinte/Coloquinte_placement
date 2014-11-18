@@ -223,36 +223,6 @@ void region_distribution::quadpartition(){
     y_bipartition();
 }
 
-float_t region_distribution::basic_cost() const{
-    double res = 0.0;
-    for(region const & R : placement_regions_){
-        for(cell_ref const & C : R.cell_references_){
-            res += static_cast<double>(C.allocated_capacity_) * static_cast<double>(R.distance(C));
-        }
-    }
-    return res;
-}
-
-float_t region_distribution::cost() const{
-    std::vector<movable_cell> new_pos = export_positions();
-
-    double res = 0.0;
-    for(index_t i=0; i<cell_list_.size(); ++i){
-        res += static_cast<double>(cell_list_[i].demand_) * static_cast<double>(pt_distance(new_pos[i].pos_, cell_list_[i].pos_));
-    }
-    return res;
-}
-
-float_t region_distribution::spread_cost() const{
-    std::vector<movable_cell> new_pos = export_spread_positions();
-
-    double res = 0.0;
-    for(index_t i=0; i<cell_list_.size(); ++i){
-        res += static_cast<double>(cell_list_[i].demand_) * static_cast<double>(pt_distance(new_pos[i].pos_, cell_list_[i].pos_));
-    }
-    return res;
-}
-
 void region_distribution::redo_bipartition(region_distribution::region & Ra, region_distribution::region & Rb){
     std::vector<cell_ref> cells;
     cells.reserve(Ra.cell_references_.size()+Rb.cell_references_.size());
@@ -263,6 +233,10 @@ void region_distribution::redo_bipartition(region_distribution::region & Ra, reg
 }
 
 void region_distribution::redo_bipartitions(){
+    // This function performs optimization between neighbouring regions in various directions
+    // The most important feature is diagonal optimization, since it is not done during partitioning
+    // In order to optimize past obstacles even if only local optimization is considered, regions with no capacity are ignored
+
     // Perform optimization on the diagonals going South-East
     for(index_t diag = 0; diag < x_regions_cnt() + y_regions_cnt() - 1; ++diag){
         index_t x_begin, y_begin, nbr_elts;
@@ -276,8 +250,12 @@ void region_distribution::redo_bipartitions(){
             y_begin = 0;
             nbr_elts = std::min(y_regions_cnt(), x_regions_cnt() + y_regions_cnt() - diag -1);
         }
-        for(index_t offs = 0; offs+1 < nbr_elts; ++offs){
-            redo_bipartition(get_region(x_begin+offs, y_begin+offs), get_region(x_begin+offs+1, y_begin+offs+1));
+        index_t offs = 0;
+        for(index_t nxt_offs = 1; nxt_offs < nbr_elts; ++nxt_offs){
+            if(get_region(x_begin+nxt_offs, y_begin+nxt_offs).capacity() > 0){
+                redo_bipartition(get_region(x_begin+offs, y_begin+offs), get_region(x_begin+nxt_offs, y_begin+nxt_offs));
+                offs = nxt_offs;
+            }
         }
     }
 
@@ -294,23 +272,35 @@ void region_distribution::redo_bipartitions(){
             y_begin = diag - x_regions_cnt() + 1;
             nbr_elts = std::min(x_regions_cnt(), x_regions_cnt() + y_regions_cnt() - diag - 1);
         }
-        for(index_t offs = 0; offs+1 < nbr_elts; ++offs){
-            redo_bipartition(get_region(x_begin-offs, y_begin+offs), get_region(x_begin-offs-1, y_begin+offs+1));
+        index_t offs = 0;
+        for(index_t nxt_offs = 1; nxt_offs < nbr_elts; ++nxt_offs){
+            if(get_region(x_begin-nxt_offs, y_begin+nxt_offs).capacity() > 0){
+                redo_bipartition(get_region(x_begin-offs, y_begin+offs), get_region(x_begin-nxt_offs, y_begin+nxt_offs));
+                offs = nxt_offs;
+            }
         }
     }
 
     
     // Perform optimization on the columns
     for(index_t x = 0; x < x_regions_cnt(); ++x){
-        for(index_t y = 0; y+1 < y_regions_cnt(); ++y){
-            redo_bipartition(get_region(x, y), get_region(x, y+1));
+        index_t y=0;
+        for(index_t nxt_y = 1; nxt_y < y_regions_cnt(); ++nxt_y){
+            if(get_region(x, nxt_y).capacity() > 0){
+                redo_bipartition(get_region(x, y), get_region(x, nxt_y));
+                y = nxt_y;
+            }
         }
     }
 
     // Perform optimization on the rows
     for(index_t y = 0; y < y_regions_cnt(); ++y){
-        for(index_t x = 0; x+1 < x_regions_cnt(); ++x){
-            redo_bipartition(get_region(x, y), get_region(x+1, y));
+        index_t x=0;
+        for(index_t nxt_x = 1; nxt_x < x_regions_cnt(); ++nxt_x){
+            if(get_region(nxt_x, y).capacity() > 0){
+                redo_bipartition(get_region(x, y), get_region(nxt_x, y));
+                x = nxt_x;
+            }
         }
     }
 }

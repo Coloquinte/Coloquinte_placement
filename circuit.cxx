@@ -218,6 +218,31 @@ void get_result(netlist const & circuit, placement_t & pl, region_distribution c
     }
 }
 
+float_t get_mean_linear_disruption(netlist const & circuit, placement_t const & LB_pl, placement_t const & UB_pl){
+    float_t tot_cost = 0.0;
+    float_t tot_area = 0.0;
+    for(index_t i=0; i<circuit.cell_cnt(); ++i){
+        float_t area = static_cast<float_t>(circuit.get_cell(i).area);
+        point<float_t> diff = LB_pl.positions_[i] - UB_pl.positions_[i];
+        tot_cost += area * (std::abs(diff.x_) + std::abs(diff.y_));
+        tot_area += area;
+    }
+    return tot_cost / tot_area;
+}
+
+float_t get_mean_quadratic_disruption(netlist const & circuit, placement_t const & LB_pl, placement_t const & UB_pl){
+    float_t tot_cost = 0.0;
+    float_t tot_area = 0.0;
+    for(index_t i=0; i<circuit.cell_cnt(); ++i){
+        float_t area = static_cast<float_t>(circuit.get_cell(i).area);
+        point<float_t> diff = LB_pl.positions_[i] - UB_pl.positions_[i];
+        float_t manhattan = (std::abs(diff.x_) + std::abs(diff.y_));
+        tot_cost += area * manhattan * manhattan;
+        tot_area += area;
+    }
+    return std::sqrt(tot_cost / tot_area);
+}
+
 } // namespace gp
 } // namespace coloquinte
 

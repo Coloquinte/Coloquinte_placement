@@ -65,6 +65,8 @@ void get_result(netlist const & circuit, placement_t & pl, point<linear_system> 
 
 // Cost-related stuff, whether wirelength or disruption
 float_t get_HPWL_wirelength(netlist const & circuit, placement_t const & pl);
+float_t get_mean_linear_disruption(netlist const & circuit, placement_t const & LB_pl, placement_t const & UB_pl);
+float_t get_mean_quadratic_disruption(netlist const & circuit, placement_t const & LB_pl, placement_t const & UB_pl);
 
 // Legalizer-related stuff
 region_distribution get_rough_legalizer(netlist const & circuit, placement_t const & pl, box<int_t> surface);
