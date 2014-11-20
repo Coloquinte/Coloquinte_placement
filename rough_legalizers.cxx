@@ -14,6 +14,11 @@ void region_distribution::region::selfcheck() const{
         if(c.allocated_capacity_ <= 0){ abort(); }
     }
     if(total_allocated > capacity_){ abort(); }
+    for(index_t i=0; i+1<obstacles_.size(); ++i){
+        for(index_t j=i+1; j<obstacles_.size(); ++j){
+            assert(not obstacles_[i].box_.intersects(obstacles_[j].box_));
+        }
+    }
 }
 
 void region_distribution::region::uniquify_references(){
@@ -324,7 +329,6 @@ region_distribution::region_distribution(box<int_t> placement_area, std::vector<
         }
         references.push_back( cell_ref(c.demand_, c.pos_, i) );
     }
-
     placement_regions_.push_back(
         region(placement_area_, all_obstacles, references)
     );

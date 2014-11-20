@@ -33,16 +33,16 @@ void add_forces(pin_1D const p1, pin_1D const p2, linear_system & L, float_t tol
 point<linear_system> empty_linear_systems(netlist const & circuit, placement_t const & pl){
     point<linear_system> ret = point<linear_system>(linear_system(circuit.cell_cnt()), linear_system(circuit.cell_cnt()));
 
-    /*
-    for(index_t i=0; i<cell_cnt(); ++i){
+    for(index_t i=0; i<circuit.cell_cnt(); ++i){
         if( (XMovable & circuit.get_cell(i).attributes) == 0){
             ret.x_.add_triplet(i, i, 1.0);
+            ret.x_.add_doublet(i, pl.positions_[i].x_);
         }
         if( (YMovable & circuit.get_cell(i).attributes) == 0){
             ret.y_.add_triplet(i, i, 1.0);
+            ret.y_.add_doublet(i, pl.positions_[i].y_);
         }
     }
-    */
 
     return ret;
 }
@@ -200,7 +200,7 @@ region_distribution get_rough_legalizer(netlist const & circuit, placement_t con
 
     for(index_t i=0; i<circuit.cell_cnt(); ++i){
         auto C = circuit.get_cell(i);
-        if(C.attributes & (XMovable|YMovable)){
+        if((C.attributes & (XMovable|YMovable)) != 0){
             movable_cells.push_back(region_distribution::movable_cell(C.area, pl.positions_[i], i));
         }
         else{
