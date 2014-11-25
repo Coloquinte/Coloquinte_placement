@@ -9,6 +9,14 @@
 namespace coloquinte{
 namespace gp{
 
+struct matrix_doublet{
+    index_t c_;
+    float val_;
+    bool operator<(matrix_doublet const o) const{ return c_ < o.c_; }
+    matrix_doublet(){}
+    matrix_doublet(index_t c, float v) : c_(c), val_(v){}
+};
+
 struct matrix_triplet{
     index_t r_, c_;
     float_t val_;
@@ -83,10 +91,7 @@ class linear_system{
 
     index_t size() const{ return target_.size(); }
 
-    std::vector<float_t> solve_CG(std::vector<float_t> guess, float_t tol);
-    std::vector<float_t> solve_cholesky();
-    
-
+    std::vector<float_t> solve_CG(std::vector<float_t> guess, float_t improvement_ratio);
 };
 
 } // namespace gp

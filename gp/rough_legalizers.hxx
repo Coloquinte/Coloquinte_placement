@@ -211,7 +211,7 @@ inline float_t region_distribution::region::distance(region_distribution::cell_r
     //return pt_distance(pos_, C.pos_);
     float_t manhattan = std::max(static_cast<float_t>(0.0), std::max(C.pos_.x_ - surface_.x_max_, surface_.x_min_ - C.pos_.x_))
                       + std::max(static_cast<float_t>(0.0), std::max(C.pos_.y_ - surface_.y_max_, surface_.y_min_ - C.pos_.y_));
-    return manhattan * (10000.0 + manhattan);
+    return manhattan * (5000.0 + manhattan);
 }
 
 

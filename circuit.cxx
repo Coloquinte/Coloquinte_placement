@@ -139,15 +139,13 @@ void get_result(netlist const & circuit, placement_t & pl, point<linear_system> 
         x_guess[i] = pl.positions_[i].x_;
         y_guess[i] = pl.positions_[i].y_;
     }
-    
-    #pragma omp task shared(L) shared(x_sol)
+    #pragma omp parallel sections num_threads(2)
+    {
+    #pragma omp section
     x_sol = L.x_.solve_CG(x_guess, tol);
-    //x_sol = L.x_.solve_cholesky();
-    #pragma omp task shared(L) shared(y_sol)
+    #pragma omp section
     y_sol = L.y_.solve_CG(y_guess, tol);
-    //y_sol = L.y_.solve_cholesky();
-    #pragma omp taskwait
-    
+    }
     for(index_t i=0; i<pl.cell_cnt(); ++i){
         if( (circuit.get_cell(i).attributes & XMovable) != 0){
             pl.positions_[i].x_ = x_sol[i];
