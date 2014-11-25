@@ -156,6 +156,22 @@ void get_result(netlist const & circuit, placement_t & pl, point<linear_system> 
     }
 }
 
+// Intended to be used by pulling forces to adapt the forces to the cell's areas
+std::vector<float_t> get_area_scales(netlist const & circuit){
+    std::vector<float_t> ret(circuit.cell_cnt());
+    capacity_t int_tot_area = 0;
+    for(index_t i=0; i<circuit.cell_cnt(); ++i){
+        capacity_t A = circuit.get_cell(i).area;
+        ret[i] = static_cast<float_t>(A);
+        int_tot_area += A;
+    }
+    float_t average_area = static_cast<float_t>(int_tot_area) / circuit.cell_cnt();
+    for(index_t i=0; i<circuit.cell_cnt(); ++i){
+        ret[i] /= average_area;
+    }
+    return ret;
+}
+
 point<linear_system> get_pulling_forces (netlist const & circuit, placement_t const & pl, float_t typical_distance){
     point<linear_system> L = empty_linear_systems(circuit, pl);
     float_t typical_force = 1.0 / typical_distance;
@@ -177,13 +193,14 @@ point<linear_system> get_pulling_forces (netlist const & circuit, placement_t co
 point<linear_system> get_linear_pulling_forces (netlist const & circuit, placement_t const & UB_pl, placement_t const & LB_pl, float_t force, float_t min_distance){
     point<linear_system> L = empty_linear_systems(circuit, UB_pl);
     assert(LB_pl.cell_cnt() == UB_pl.cell_cnt());
+    std::vector<float_t> scaling = get_area_scales(circuit);
     for(index_t i=0; i<LB_pl.cell_cnt(); ++i){
         L.x_.add_anchor(
-            force / (std::max(std::abs(UB_pl.positions_[i].x_ - LB_pl.positions_[i].x_), min_distance)),
+            force * scaling[i] / (std::max(std::abs(UB_pl.positions_[i].x_ - LB_pl.positions_[i].x_), min_distance)),
             i, UB_pl.positions_[i].x_
         );
         L.y_.add_anchor(
-            force / (std::max(std::abs(UB_pl.positions_[i].y_ - LB_pl.positions_[i].y_), min_distance)),
+            force * scaling[i] / (std::max(std::abs(UB_pl.positions_[i].y_ - LB_pl.positions_[i].y_), min_distance)),
             i, UB_pl.positions_[i].y_
         );
     }
