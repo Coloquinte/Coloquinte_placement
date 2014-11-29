@@ -27,20 +27,36 @@ struct matrix_triplet{
 class linear_system{
     std::vector<matrix_triplet> matrix_;
     std::vector<float_t> target_;
-
+    index_t internal_size;
+    
     public:
     void add_triplet(index_t row, index_t col, float_t val){ matrix_.push_back(matrix_triplet(row, col, val)); }
 
     linear_system operator+(linear_system const & o) const{
-        if(o.target_.size() != target_.size()){ throw std::runtime_error("Mismatched system sizes"); }
-        linear_system ret(size());
+        if(o.internal_size != internal_size){ throw std::runtime_error("Mismatched system sizes"); }
+        linear_system ret(target_.size() + o.target_.size() - internal_size, internal_size);
 
         ret.matrix_ = matrix_;
-        ret.matrix_.insert(ret.matrix_.end(), o.matrix_.begin(), o.matrix_.end());
+        std::vector<matrix_triplet> omatrix = o.matrix_;
+        for(matrix_triplet & t : omatrix){
+            if(t.c_ >= internal_size){
+                t.c_ += (target_.size() - internal_size);
+            }
+            if(t.r_ >= internal_size){
+                t.r_ += (target_.size() - internal_size);
+            }
+        }
+        ret.matrix_.insert(ret.matrix_.end(), omatrix.begin(), omatrix.end());
 
-        ret.target_.resize(target_.size());
-        for(index_t i=0; i<ret.target_.size(); ++i){
+        // ret.target_.resize(target_.size() + o.target_.size() - internal_size);
+        for(index_t i=0; i<internal_size; ++i){
             ret.target_[i] = target_[i] + o.target_[i];
+        }
+        for(index_t i=internal_size; i<target_.size(); ++i){
+            ret.target_[i] = target_[i];
+        }
+        for(index_t i=internal_size; i<o.target_.size(); ++i){
+            ret.target_[i + target_.size() - internal_size] = o.target_[i];
         }
 
         return ret;
@@ -87,9 +103,11 @@ class linear_system{
         add_doublet(c, scale*pos);
     }
 
-    linear_system(index_t s) : target_(s, 0.0){}
+    linear_system(index_t s) : target_(s, 0.0), internal_size(s){}
+    linear_system(index_t s, index_t i) : target_(s, 0.0), internal_size(i){}
 
     index_t size() const{ return target_.size(); }
+    void add_variables(index_t cnt){ target_.resize(target_.size() + cnt, 0.0); }
 
     std::vector<float_t> solve_CG(std::vector<float_t> guess, float_t improvement_ratio);
 };

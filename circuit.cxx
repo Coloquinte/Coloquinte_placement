@@ -121,12 +121,11 @@ point<linear_system> get_HPWLR_linear_system (netlist const & circuit, placement
     point<linear_system> L = empty_linear_systems(circuit, pl);
     for(index_t i=0; i<circuit.net_cnt(); ++i){
         auto pins = get_pins_1D(circuit, pl, i);
-        get_HPWLR(pins.x_, L.y_, tol);
+        get_HPWLR(pins.x_, L.x_, tol);
         get_HPWLR(pins.y_, L.y_, tol);
     }
     return L;
 }
-
 
 void get_result(netlist const & circuit, placement_t & pl, point<linear_system> & L, float_t tol){
     std::vector<float_t> x_sol, y_sol;
