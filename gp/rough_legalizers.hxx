@@ -7,6 +7,7 @@
 #include <vector>
 #include <cassert>
 #include <cmath>
+#include <functional>
 
 /*
  * A simple class to perform rough legalization with extreme efficiency
@@ -77,6 +78,7 @@ class region_distribution{
         region(box<int_t> bx, std::vector<fixed_cell> obstacles, std::vector<cell_ref> cells);
     
         static void distribute_new_cells(region & a, region & b, std::vector<cell_ref> cells);
+        static void redo_partition(std::vector<std::reference_wrapper<region_distribution::region> > regions);
 
         void selfcheck() const;
         void x_bipartition(region & lft, region & rgt);
@@ -149,7 +151,8 @@ class region_distribution{
     
     // Improve bipartitions between closest non-empty neighbours
     void redo_bipartitions();
-    
+    void redo_quadpartitions();
+
     // Tries to escape local minimas with long-distance moves to non-filled places
     void line_moves();
 

@@ -3,9 +3,189 @@
 #include <algorithm>
 #include <cmath>
 #include <cassert>
+#include <queue>
 
 namespace coloquinte{
 namespace gp{
+
+const index_t null_ind = std::numeric_limits<index_t>::max();
+
+class current_allocation{
+    // Internal data structures
+
+    // Priority queue element to determine the source to be used between regions
+    struct movable_source{
+        index_t source;
+        float_t cost;
+        bool operator<(movable_source const o) const{
+               return cost > o.cost // Sorted by cost
+            || (cost == o.cost && source < o.source); // And by index to limit the number of fractional elements between two regions
+        }
+        movable_source(index_t s, float_t c) : source(s), cost(c) {}
+    };
+
+    // Priority queue element for Dijkstra
+    struct queue_elt{
+        index_t to_visit, from_parent;
+        float_t tot_cost;
+        capacity_t capacity;
+        bool operator<(queue_elt const o) const{ return tot_cost > o.tot_cost; }
+        queue_elt(index_t v, index_t p, float_t c, capacity_t cp) : to_visit(v), from_parent(p), tot_cost(c), capacity(cp){}
+    };
+
+    // Return value when querying an edge between two regions
+    struct edge_properties{
+        capacity_t edge_capacity;
+        float_t edge_cost;
+        //index_t source;
+        //edge_properties(capacity_t cap, float_t cst, index_t s) : edge_capacity(cap), edge_cost(cst), source(s) {}
+        edge_properties(capacity_t cap, float_t cst) : edge_capacity(cap), edge_cost(cst) {}
+    };
+
+    // Member data
+    std::vector<std::vector<capacity_t>  > sr_allocations; // For each region, for each source, the capacity allocated by the region
+    std::vector<std::vector<float_t> > sr_costs; // The costs from a region to a source
+    std::vector<capacity_t>                r_capacities;
+    std::vector<std::vector<std::priority_queue<movable_source> > > best_interregions_costs; // What is the best source to move to go from region k1 to region k2?
+    index_t dijkstra_cnt;
+
+
+    // Helper functions
+
+    // Number of regions
+    index_t region_cnt() const{
+        assert(sr_costs.size() == sr_allocations.size());
+        return sr_costs.size();
+    }
+
+    // Returns the edge between two regions (capacity 0 if no source is assigned to r1, preventing any change between those regions)
+    edge_properties get_edge(index_t r1, index_t r2){
+        while(not best_interregions_costs[r1][r2].empty()){
+            movable_source cur = best_interregions_costs[r1][r2].top();
+            // Test if the edge still exists
+            if(sr_allocations[r1][cur.source] != 0){
+                // Found the edge: return
+                return edge_properties(sr_allocations[r1][cur.source], cur.cost);
+            }
+            else{
+                best_interregions_costs[r1][r2].pop();
+            }
+        }
+        // There is no edge
+        return edge_properties(0, std::numeric_limits<float_t>::max());
+    }
+
+    void add_source_to_heaps(index_t r, index_t source){
+        for(index_t i=0; i<region_cnt(); ++i){
+            if(i != r){
+                best_interregions_costs[r][i].push(
+                    movable_source(source,
+                        sr_costs[i][source] - sr_costs[r][source]
+                    ));
+            }
+        }
+    }
+
+    void push_edge(index_t r1, index_t r2, capacity_t flow){
+        assert(r1 != r2);
+        assert(not best_interregions_costs[r1][r2].empty());
+        movable_source cur = best_interregions_costs[r1][r2].top();
+
+        // Does this edge allocates a new source in the destination region? If yes, update the corresponding heaps
+        bool already_present = sr_allocations[r2][cur.source] > 0;
+
+        // Deallocating from the first region is handled by the get_edge function: just substract the flow
+        sr_allocations[r1][cur.source] -= flow;
+        sr_allocations[r2][cur.source] += flow;
+        assert(sr_allocations[r1][cur.source] >= 0);
+
+        if(not already_present){
+            add_source_to_heaps(r2, cur.source);
+        }
+    }
+
+    public:
+    void add_source(capacity_t demand, std::vector<float_t> const & costs){
+        index_t elt_ind = sr_allocations[0].size();
+
+        for(index_t i=0; i<region_cnt(); ++i){
+            assert(sr_costs[i].size() == elt_ind);
+            assert(sr_allocations[i].size() == elt_ind);
+            sr_costs[i].push_back(costs[i]);
+            sr_allocations[i].push_back(0);
+        }
+        while(demand > 0){
+            ++ dijkstra_cnt;
+            // Dijkstra where the source element uses index region_cnt == k
+            // Dijkstra is correct even if the costs may be negative since the total path costs are always bigger than any intermediate node's cost if the previous solution was optimal
+            // TODO: By reversing the Dijkstra (regions to source) we could get much better best case complexities than O(k²)
+            // TODO maybe: the implementation here is O(k² log k)
+            std::vector<bool> visited(region_cnt(), false);
+            std::vector<index_t> parents(region_cnt(), null_ind);
+            std::vector<capacity_t> path_capacities(region_cnt(), 0);
+            std::vector<float_t> final_costs(region_cnt(), std::numeric_limits<float_t>::max());
+            std::priority_queue<queue_elt> next_visits;
+            for(index_t i=0; i<region_cnt(); ++i){
+                next_visits.push(queue_elt(i, region_cnt(), costs[i], demand));
+            }
+            // Get the cost for each region
+            while(not next_visits.empty()){
+                queue_elt cur = next_visits.top(); next_visits.pop();
+                if(not visited[cur.to_visit]){
+                    visited[cur.to_visit] = true;
+                    parents[cur.to_visit] = cur.from_parent;
+                    final_costs[cur.to_visit] = cur.tot_cost;
+                    path_capacities[cur.to_visit] = cur.capacity;
+                    for(index_t reg=0; reg<region_cnt(); ++reg){
+                        if(not visited[reg]){
+                            // Is it possible to move a source from that region?
+                            edge_properties E = get_edge(cur.to_visit, reg);
+                            if(E.edge_capacity > 0){
+                                next_visits.push(queue_elt(reg, cur.to_visit, cur.tot_cost + E.edge_cost, std::min(cur.capacity, E.edge_capacity)));
+                            }
+                        }
+                    }
+                }
+            }
+            // Get the region with non-zero remaining capacity with least cost
+            index_t best_reg = null_ind;
+            float_t best_cost = std::numeric_limits<float_t>::max();
+            for(index_t reg=0; reg<region_cnt(); ++reg){
+                if(final_costs[reg] < best_cost and r_capacities[reg] > 0){
+                    assert(path_capacities[reg] > 0);
+                    best_reg = reg; best_cost = final_costs[reg];
+                }
+            }
+            if(best_reg == null_ind){ throw std::runtime_error("No reachable region found\n"); }
+
+            // Find the path's capacity
+            capacity_t path_capacity = std::min(path_capacities[best_reg], r_capacities[best_reg]); // Limited by the region capacities; the source and the other edges were already handled
+
+            // Send the flow and update the sources
+            demand -= path_capacity;
+            r_capacities[best_reg] -= path_capacity;
+
+            index_t cur_reg = best_reg; index_t prev_reg = parents[cur_reg];
+            while(prev_reg != region_cnt()){
+                push_edge(prev_reg, cur_reg, path_capacity);
+                cur_reg = prev_reg; prev_reg = parents[cur_reg];
+            }
+            sr_allocations[cur_reg][elt_ind] += path_capacity; // The source gets allocated to the first region of the path
+        }
+
+        for(index_t i=0; i<region_cnt(); ++i){
+            if(sr_allocations[i][elt_ind] > 0){
+                add_source_to_heaps(i, elt_ind);
+            }
+        }
+    }
+
+    current_allocation(std::vector<capacity_t> caps) : sr_allocations(caps.size()), sr_costs(caps.size()), r_capacities(caps), best_interregions_costs(caps.size(), std::vector<std::priority_queue<movable_source> >(caps.size())), dijkstra_cnt(0){}
+
+    std::vector<std::vector<capacity_t> > get_allocations() const{ return sr_allocations; }
+    index_t get_iterations_cnt() const { return dijkstra_cnt; }
+};
+
 
 void region_distribution::region::selfcheck() const{
     capacity_t total_allocated = 0;
@@ -306,6 +486,51 @@ void region_distribution::redo_bipartitions(){
                 redo_bipartition(get_region(x, y), get_region(nxt_x, y));
                 x = nxt_x;
             }
+        }
+    }
+}
+
+void region_distribution::region::redo_partition(std::vector<std::reference_wrapper<region_distribution::region> > regions){
+    std::vector<cell_ref> all_cells;
+    std::vector<capacity_t> caps;
+    for(region_distribution::region & R : regions){
+        all_cells.insert(all_cells.end(), R.cell_references_.begin(), R.cell_references_.end());
+        caps.push_back(R.capacity_);
+        R.cell_references_.clear();
+    }
+    std::sort(all_cells.begin(), all_cells.end(), [](cell_ref const a, cell_ref const b){ return a.allocated_capacity_ > b.allocated_capacity_; });
+
+    current_allocation transporter(caps);
+    for(auto const C : all_cells){
+        std::vector<float_t> costs;
+        for(region_distribution::region & R : regions){
+            costs.push_back(R.distance(C));
+        }
+        transporter.add_source(C.allocated_capacity_, costs);
+    }
+    auto res = transporter.get_allocations();
+    assert(res.size() == regions.size());
+    for(index_t i=0; i<regions.size(); ++i){
+        assert(res[i].size() == all_cells.size());
+        for(index_t j=0; j<all_cells.size(); ++j){
+            if(res[i][j] > 0){
+                cell_ref C = all_cells[j];
+                C.allocated_capacity_ = res[i][j];
+                regions[i].get().cell_references_.push_back(C);
+            }
+        }
+    }
+}
+
+void region_distribution::redo_quadpartitions(){
+    for(index_t x = 1; x+1 < x_regions_cnt(); x+=2){
+        for(index_t y = 1; y+1 < y_regions_cnt(); y+=2){
+            region::redo_partition(std::vector<std::reference_wrapper<region> >({get_region(x,y), get_region(x,y+1), get_region(x+1,y), get_region(x+1,y+1)}));
+        }
+    }
+    for(index_t x = 0; x+1 < x_regions_cnt(); x+=2){
+        for(index_t y = 0; y+1 < y_regions_cnt(); y+=2){
+            region::redo_partition(std::vector<std::reference_wrapper<region> >({get_region(x,y), get_region(x,y+1), get_region(x+1,y), get_region(x+1,y+1)}));
         }
     }
 }
