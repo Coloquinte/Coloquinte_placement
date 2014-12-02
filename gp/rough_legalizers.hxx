@@ -96,7 +96,7 @@ class region_distribution{
     private:
     // Members
     //
-    index_t x_cuts_cnt_, y_cuts_cnt_;
+    index_t x_regions_cnt_, y_regions_cnt_;
     
     box<int_t> placement_area_;
     std::vector<region> placement_regions_;
@@ -144,6 +144,8 @@ class region_distribution{
     void x_bipartition();
     void y_bipartition();
     void quadpartition();
+    void multipartition(index_t width);
+    void multipartition(index_t x_width, index_t y_width);
     
     /*
      * Optimization functions
@@ -152,6 +154,8 @@ class region_distribution{
     // Improve bipartitions between closest non-empty neighbours
     void redo_bipartitions();
     void redo_quadpartitions();
+    void redo_multipartitions(index_t width);
+    void redo_multipartitions(index_t x_width, index_t y_width);
 
     // Tries to escape local minimas with long-distance moves to non-filled places
     void line_moves();
@@ -177,8 +181,8 @@ inline region_distribution::fixed_cell::fixed_cell(box<int_t> bx) : box_(bx){}
 inline region_distribution::movable_cell::movable_cell(){}
 inline region_distribution::movable_cell::movable_cell(capacity_t demand, point<float_t> p, index_t ind) : demand_(demand), pos_(p), index_in_placement_(ind){}
 
-inline index_t region_distribution::x_regions_cnt() const { return 1 << x_cuts_cnt_; }
-inline index_t region_distribution::y_regions_cnt() const { return 1 << y_cuts_cnt_; }
+inline index_t region_distribution::x_regions_cnt() const { return x_regions_cnt_; }
+inline index_t region_distribution::y_regions_cnt() const { return y_regions_cnt_; }
 inline index_t region_distribution::regions_cnt()   const { index_t ret = x_regions_cnt() * y_regions_cnt(); assert(placement_regions_.size() == ret); return ret; }
 inline region_distribution::region & region_distribution::get_region(index_t x_coord, index_t y_coord){
     assert(x_coord < x_regions_cnt() && y_coord < y_regions_cnt());
