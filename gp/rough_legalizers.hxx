@@ -101,12 +101,13 @@ class region_distribution{
         void selfcheck() const;
 
         // Accessors
-        float_t capacity() const;
-        float_t allocated_capacity() const;
-        float_t unused_capacity() const;
+        capacity_t capacity() const;
+        capacity_t allocated_capacity() const;
+        capacity_t unused_capacity() const;
         index_t cell_cnt() const;
 
         float_t distance(cell_ref const & C) const;
+        float_t cost() const;
     };
 
     private:
@@ -147,7 +148,10 @@ class region_distribution{
 
     std::vector<movable_cell> export_positions() const;
     std::vector<movable_cell> export_spread_positions() const;
-    
+
+    // The cost as seen by the partitioning algorithms (but not the export)
+    float_t cost() const;
+
     /*
      * Further partitions
      */
@@ -208,9 +212,9 @@ inline index_t region_distribution::fractional_cell_cnt() const{
 }
 
 
-inline float_t region_distribution::region::capacity() const{ return capacity_; }
-inline float_t region_distribution::region::unused_capacity() const{ return capacity() - allocated_capacity(); }
-inline float_t region_distribution::region::allocated_capacity() const{
+inline capacity_t region_distribution::region::capacity() const{ return capacity_; }
+inline capacity_t region_distribution::region::unused_capacity() const{ return capacity() - allocated_capacity(); }
+inline capacity_t region_distribution::region::allocated_capacity() const{
     capacity_t ret = 0;
     for(cell_ref const C : cell_references_){
        ret += C.allocated_capacity_; 

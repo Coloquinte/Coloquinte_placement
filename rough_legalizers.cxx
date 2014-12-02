@@ -569,6 +569,24 @@ std::vector<region_distribution::movable_cell> region_distribution::export_sprea
     return ret;
 }
 
+float_t region_distribution::region::cost() const{
+    float_t res = 0.0;
+    for(cell_ref const C : cell_references_){
+        res += distance(C) * static_cast<float_t>(C.allocated_capacity_);
+    }
+    return res;
+}
+
+float_t region_distribution::cost() const{
+    float_t res = 0.0;
+    capacity_t tot_cap = 0;
+    for(region const & R : placement_regions_){
+        res += R.cost();
+        tot_cap += R.allocated_capacity();
+    }
+    // Average over the cells' areas
+    return res / static_cast<float_t>(tot_cap);
+}
 
 } // Namespace gp
 } // Namespace coloquinte
