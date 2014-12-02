@@ -1,4 +1,7 @@
 
+#ifndef COLOQUINTE_GP_TRANSPORTATION
+#define COLOQUINTE_GP_TRANSPORTATION
+
 #include "common.hxx"
 
 #include <queue>
@@ -7,7 +10,6 @@
 
 namespace coloquinte{
 namespace gp{
-
 
 class current_allocation{
     static const index_t null_ind = std::numeric_limits<index_t>::max();
@@ -89,6 +91,8 @@ class current_allocation{
     std::vector<std::vector<capacity_t> > get_allocations() const{ return sr_allocations; }
     index_t get_iterations_cnt() const { return dijkstra_cnt; }
 };
+
+#endif
 
 } // Namespace gp
 }

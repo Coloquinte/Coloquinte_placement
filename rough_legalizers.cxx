@@ -23,6 +23,22 @@ void region_distribution::region::selfcheck() const{
     }
 }
 
+void region_distribution::selfcheck() const{
+    for(region const & R : placement_regions_){
+        R.selfcheck();
+    }
+    std::vector<capacity_t> capacities(cell_list_.size(), 0);
+    for(region const & R : placement_regions_){
+        for(cell_ref const C : R.cell_references_){
+            capacities[C.index_in_list_] += C.allocated_capacity_;
+            if(C.allocated_capacity_ <= 0){ abort(); }
+        }
+    }
+    for(index_t i=0; i < cell_list_.size(); ++i){
+        if(capacities[i] != cell_list_[i].demand_){ abort(); }
+    }
+}
+
 void region_distribution::region::uniquify_references(){
     std::sort(cell_references_.begin(), cell_references_.end(), [](cell_ref a, cell_ref b){ return a.index_in_list_ < b.index_in_list_; });
 
@@ -43,20 +59,13 @@ void region_distribution::region::uniquify_references(){
     std::swap(cell_references_, new_refs);
 }
 
-void region_distribution::selfcheck() const{
-    for(region const & R : placement_regions_){
-        R.selfcheck();
+void region_distribution::fractions_minimization(){
+    for(region & R : placement_regions_){
+        R.uniquify_references();
     }
-    std::vector<capacity_t> capacities(cell_list_.size(), 0);
-    for(region const & R : placement_regions_){
-        for(cell_ref const C : R.cell_references_){
-            capacities[C.index_in_list_] += C.allocated_capacity_;
-            if(C.allocated_capacity_ <= 0){ abort(); }
-        }
-    }
-    for(index_t i=0; i < cell_list_.size(); ++i){
-        if(capacities[i] != cell_list_[i].demand_){ abort(); }
-    }
+
+    // Find cycles of cut cells, then find a spanning tree to reallocate the cells
+    // TODO
 }
 
 region_distribution::region::region(box<int_t> bx, std::vector<fixed_cell> obstacles, std::vector<cell_ref> cells) : surface_(bx), cell_references_(cells){
@@ -86,7 +95,7 @@ void region_distribution::region::x_bipartition(region & lft, region & rgt){
     lft = region(bx_lft, obstacles_, std::vector<cell_ref>());
     rgt = region(bx_rgt, obstacles_, std::vector<cell_ref>());
 
-    distribute_new_cells(lft, rgt, cell_references_);
+    distribute_cells(lft, rgt);
 
     assert(lft.allocated_capacity() + rgt.allocated_capacity() == allocated_capacity());
     assert(lft.capacity() + rgt.capacity() == capacity());
@@ -103,12 +112,43 @@ void region_distribution::region::y_bipartition(region & up, region & dwn){
     dwn = region(bx_dwn, obstacles_, std::vector<cell_ref>());
     up  = region(bx_up , obstacles_, std::vector<cell_ref>());
 
-    distribute_new_cells(up, dwn, cell_references_);
+    distribute_cells(up, dwn);
 
     assert(up.allocated_capacity() + dwn.allocated_capacity() == allocated_capacity());
     assert(up.capacity() + dwn.capacity() == capacity());
 }
 
+void region_distribution::x_bipartition(){
+    std::vector<region> old_placement_regions(2*regions_cnt());
+    placement_regions_.swap(old_placement_regions);
+
+    index_t old_x_regions_cnt = x_regions_cnt();
+    index_t old_y_regions_cnt = y_regions_cnt();
+    x_regions_cnt_ *= 2;
+
+    for(index_t x=0; x < old_x_regions_cnt; ++x){
+        for(index_t y=0; y < old_y_regions_cnt; ++y){
+            index_t i = y * old_x_regions_cnt + x;
+            old_placement_regions[i].x_bipartition(get_region(2*x, y), get_region(2*x+1, y));
+        }
+    }
+}
+
+void region_distribution::y_bipartition(){
+    std::vector<region> old_placement_regions(2*regions_cnt());
+    placement_regions_.swap(old_placement_regions);
+
+    index_t old_x_regions_cnt = x_regions_cnt();
+    index_t old_y_regions_cnt = y_regions_cnt();
+    y_regions_cnt_ *= 2;
+
+    for(index_t x=0; x < old_x_regions_cnt; ++x){
+        for(index_t y=0; y < old_y_regions_cnt; ++y){
+            index_t i = y * old_x_regions_cnt + x;
+            old_placement_regions[i].y_bipartition(get_region(x, 2*y), get_region(x, 2*y+1));
+        }
+    }
+}
 
 // The big awful function that handles optimal cell distribution between two regions; not meant to be called externally
 void region_distribution::region::distribute_new_cells(region & region_a, region & region_b, std::vector<cell_ref> cells){
@@ -191,131 +231,22 @@ void region_distribution::region::distribute_new_cells(region & region_a, region
     }
 }
 
-void region_distribution::x_bipartition(){
-    std::vector<region> old_placement_regions(2*regions_cnt());
-    placement_regions_.swap(old_placement_regions);
-
-    index_t old_x_regions_cnt = x_regions_cnt();
-    index_t old_y_regions_cnt = y_regions_cnt();
-    x_regions_cnt_ *= 2;
-
-    for(index_t x=0; x < old_x_regions_cnt; ++x){
-        for(index_t y=0; y < old_y_regions_cnt; ++y){
-            index_t i = y * old_x_regions_cnt + x;
-            old_placement_regions[i].x_bipartition(get_region(2*x, y), get_region(2*x+1, y));
-        }
-    }
+void region_distribution::region::distribute_cells(region & a, region & b) const{
+    distribute_new_cells(a, b, cell_references_);
 }
 
-void region_distribution::y_bipartition(){
-    std::vector<region> old_placement_regions(2*regions_cnt());
-    placement_regions_.swap(old_placement_regions);
-
-    index_t old_x_regions_cnt = x_regions_cnt();
-    index_t old_y_regions_cnt = y_regions_cnt();
-    y_regions_cnt_ *= 2;
-
-    for(index_t x=0; x < old_x_regions_cnt; ++x){
-        for(index_t y=0; y < old_y_regions_cnt; ++y){
-            index_t i = y * old_x_regions_cnt + x;
-            old_placement_regions[i].y_bipartition(get_region(x, 2*y), get_region(x, 2*y+1));
-        }
-    }
-}
-
-void region_distribution::quadpartition(){
-    // Naive implementation; maybe advanced ones could use an exact solution
-    x_bipartition();
-    y_bipartition();
-}
-
-void region_distribution::redo_bipartition(region_distribution::region & Ra, region_distribution::region & Rb){
+void region_distribution::region::redistribute_cells(region & Ra, region & Rb){
     std::vector<cell_ref> cells;
     cells.reserve(Ra.cell_references_.size()+Rb.cell_references_.size());
     cells.insert(cells.end(), Ra.cell_references_.begin(), Ra.cell_references_.end());
     cells.insert(cells.end(), Rb.cell_references_.begin(), Rb.cell_references_.end());
 
-    region::distribute_new_cells(Ra, Rb, cells);
+    distribute_new_cells(Ra, Rb, cells);
 }
 
-void region_distribution::redo_bipartitions(){
-    // This function performs optimization between neighbouring regions in various directions
-    // The most important feature is diagonal optimization, since it is not done during partitioning
-    // In order to optimize past obstacles even if only local optimization is considered, regions with no capacity are ignored
-
-    // Perform optimization on the diagonals going South-East
-    for(index_t diag = 0; diag < x_regions_cnt() + y_regions_cnt() - 1; ++diag){
-        index_t x_begin, y_begin, nbr_elts;
-        if(diag < y_regions_cnt()){ // Begin on the left side
-            x_begin = 0;
-            y_begin = diag;
-            nbr_elts = std::min(x_regions_cnt(), y_regions_cnt() - diag);
-        }
-        else{ // Begin on the upper side
-            x_begin = diag - y_regions_cnt() + 1;
-            y_begin = 0;
-            nbr_elts = std::min(y_regions_cnt(), x_regions_cnt() + y_regions_cnt() - diag -1);
-        }
-        index_t offs = 0;
-        for(index_t nxt_offs = 1; nxt_offs < nbr_elts; ++nxt_offs){
-            if(get_region(x_begin+nxt_offs, y_begin+nxt_offs).capacity() > 0){
-                redo_bipartition(get_region(x_begin+offs, y_begin+offs), get_region(x_begin+nxt_offs, y_begin+nxt_offs));
-                offs = nxt_offs;
-            }
-        }
-    }
-
-    // Perform optimization on the diagonals going South-West
-    for(index_t diag = 0; diag < x_regions_cnt() + y_regions_cnt() - 1; ++diag){
-        index_t x_begin, y_begin, nbr_elts;
-        if(diag < x_regions_cnt()){ // Begin on the upper side
-            x_begin = diag;
-            y_begin = 0;
-            nbr_elts = std::min(diag, y_regions_cnt());
-        }
-        else{ // Begin on the right side
-            x_begin = x_regions_cnt() - 1;
-            y_begin = diag - x_regions_cnt() + 1;
-            nbr_elts = std::min(x_regions_cnt(), x_regions_cnt() + y_regions_cnt() - diag - 1);
-        }
-        index_t offs = 0;
-        for(index_t nxt_offs = 1; nxt_offs < nbr_elts; ++nxt_offs){
-            if(get_region(x_begin-nxt_offs, y_begin+nxt_offs).capacity() > 0){
-                redo_bipartition(get_region(x_begin-offs, y_begin+offs), get_region(x_begin-nxt_offs, y_begin+nxt_offs));
-                offs = nxt_offs;
-            }
-        }
-    }
-
-    
-    // Perform optimization on the columns
-    for(index_t x = 0; x < x_regions_cnt(); ++x){
-        index_t y=0;
-        for(index_t nxt_y = 1; nxt_y < y_regions_cnt(); ++nxt_y){
-            if(get_region(x, nxt_y).capacity() > 0){
-                redo_bipartition(get_region(x, y), get_region(x, nxt_y));
-                y = nxt_y;
-            }
-        }
-    }
-
-    // Perform optimization on the rows
-    for(index_t y = 0; y < y_regions_cnt(); ++y){
-        index_t x=0;
-        for(index_t nxt_x = 1; nxt_x < x_regions_cnt(); ++nxt_x){
-            if(get_region(nxt_x, y).capacity() > 0){
-                redo_bipartition(get_region(x, y), get_region(nxt_x, y));
-                x = nxt_x;
-            }
-        }
-    }
-}
-
-void region_distribution::region::redo_partition(std::vector<std::reference_wrapper<region_distribution::region> > regions){
-    std::vector<cell_ref> all_cells;
+void region_distribution::region::distribute_new_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions, std::vector<cell_ref> all_cells){
     std::vector<capacity_t> caps;
     for(region_distribution::region & R : regions){
-        all_cells.insert(all_cells.end(), R.cell_references_.begin(), R.cell_references_.end());
         caps.push_back(R.capacity_);
         R.cell_references_.clear();
     }
@@ -341,14 +272,140 @@ void region_distribution::region::redo_partition(std::vector<std::reference_wrap
             }
         }
     }
+
 }
 
-void region_distribution::redo_quadpartitions(){
-    redo_multipartitions(2);
+void region_distribution::region::redistribute_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions){
+    std::vector<cell_ref> all_cells;
+    for(region_distribution::region & R : regions){
+        all_cells.insert(all_cells.end(), R.cell_references_.begin(), R.cell_references_.end());
+    }
+    distribute_new_cells(regions, all_cells);
 }
 
-void region_distribution::redo_multipartitions(index_t width){
-    redo_multipartitions(width, width);
+void region_distribution::region::distribute_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions) const{
+    distribute_new_cells(regions, cell_references_);
+}
+
+void region_distribution::multipartition(index_t x_width, index_t y_width){
+    assert(x_width > 0 and y_width > 0);
+
+    std::vector<region> old_placement_regions(x_width*y_width*regions_cnt());
+    placement_regions_.swap(old_placement_regions);
+
+    index_t old_x_regions_cnt = x_regions_cnt();
+    index_t old_y_regions_cnt = y_regions_cnt();
+    x_regions_cnt_ *= x_width;
+    y_regions_cnt_ *= y_width;
+
+    for(index_t x=0; x < old_x_regions_cnt; ++x){
+        for(index_t y=0; y < old_y_regions_cnt; ++y){
+
+            index_t i = y * old_x_regions_cnt + x;
+            region & R = old_placement_regions[i];
+            std::vector<std::reference_wrapper<region> > destination_regions;
+            int_t x_min = R.surface_.x_min_,
+                  y_min = R.surface_.y_min_,
+                  x_max = R.surface_.x_max_,
+                  y_max = R.surface_.y_max_;
+            int_t x_sz = (x_max - x_min) / x_width,
+                  y_sz = (y_max - y_min) / y_width;
+            capacity_t tot_cap = 0;
+
+            // Take the new regions
+            for(index_t l_x=0; l_x<x_width; ++l_x){
+                for(index_t l_y=0; l_y<y_width; ++l_y){
+                    // Define the box for this new region
+                    int_t x_mn_lim = x_min + x_sz * l_x,
+                          y_mn_lim = y_min + y_sz * l_y,
+                          x_mx_lim = (l_x == x_width-1)? x_max : x_min + x_sz * (l_x+1),
+                          y_mx_lim = (l_y == y_width-1)? y_max : y_min + y_sz * (l_y+1);
+                    box<int_t> bx(x_mn_lim, x_mx_lim, y_mn_lim, y_mx_lim);
+
+                    // Initialize it
+                    region & cur_reg = get_region(x_width*x + l_x, y_width*y + l_y);
+                    cur_reg = region(bx, R.obstacles_, std::vector<cell_ref>());
+                    destination_regions.push_back(std::reference_wrapper<region>(cur_reg));
+                    tot_cap += cur_reg.capacity();
+                }
+            }
+            // Distribute the cells
+            old_placement_regions[i].distribute_cells(destination_regions);
+            assert(tot_cap == old_placement_regions[i].capacity());
+        }
+    }
+}
+
+void region_distribution::redo_bipartitions(){
+    // This function performs optimization between neighbouring regions in various directions
+    // The most important feature is diagonal optimization, since it is not done during partitioning
+    // In order to optimize past obstacles even if only local optimization is considered, regions with no capacity are ignored
+
+    // Perform optimization on the diagonals going South-East
+    for(index_t diag = 0; diag < x_regions_cnt() + y_regions_cnt() - 1; ++diag){
+        index_t x_begin, y_begin, nbr_elts;
+        if(diag < y_regions_cnt()){ // Begin on the left side
+            x_begin = 0;
+            y_begin = diag;
+            nbr_elts = std::min(x_regions_cnt(), y_regions_cnt() - diag);
+        }
+        else{ // Begin on the upper side
+            x_begin = diag - y_regions_cnt() + 1;
+            y_begin = 0;
+            nbr_elts = std::min(y_regions_cnt(), x_regions_cnt() + y_regions_cnt() - diag -1);
+        }
+        index_t offs = 0;
+        for(index_t nxt_offs = 1; nxt_offs < nbr_elts; ++nxt_offs){
+            if(get_region(x_begin+nxt_offs, y_begin+nxt_offs).capacity() > 0){
+                region::redistribute_cells(get_region(x_begin+offs, y_begin+offs), get_region(x_begin+nxt_offs, y_begin+nxt_offs));
+                offs = nxt_offs;
+            }
+        }
+    }
+
+    // Perform optimization on the diagonals going South-West
+    for(index_t diag = 0; diag < x_regions_cnt() + y_regions_cnt() - 1; ++diag){
+        index_t x_begin, y_begin, nbr_elts;
+        if(diag < x_regions_cnt()){ // Begin on the upper side
+            x_begin = diag;
+            y_begin = 0;
+            nbr_elts = std::min(diag, y_regions_cnt());
+        }
+        else{ // Begin on the right side
+            x_begin = x_regions_cnt() - 1;
+            y_begin = diag - x_regions_cnt() + 1;
+            nbr_elts = std::min(x_regions_cnt(), x_regions_cnt() + y_regions_cnt() - diag - 1);
+        }
+        index_t offs = 0;
+        for(index_t nxt_offs = 1; nxt_offs < nbr_elts; ++nxt_offs){
+            if(get_region(x_begin-nxt_offs, y_begin+nxt_offs).capacity() > 0){
+                region::redistribute_cells(get_region(x_begin-offs, y_begin+offs), get_region(x_begin-nxt_offs, y_begin+nxt_offs));
+                offs = nxt_offs;
+            }
+        }
+    }
+    
+    // Perform optimization on the columns
+    for(index_t x = 0; x < x_regions_cnt(); ++x){
+        index_t y=0;
+        for(index_t nxt_y = 1; nxt_y < y_regions_cnt(); ++nxt_y){
+            if(get_region(x, nxt_y).capacity() > 0){
+                region::redistribute_cells(get_region(x, y), get_region(x, nxt_y));
+                y = nxt_y;
+            }
+        }
+    }
+
+    // Perform optimization on the rows
+    for(index_t y = 0; y < y_regions_cnt(); ++y){
+        index_t x=0;
+        for(index_t nxt_x = 1; nxt_x < x_regions_cnt(); ++nxt_x){
+            if(get_region(nxt_x, y).capacity() > 0){
+                region::redistribute_cells(get_region(x, y), get_region(nxt_x, y));
+                x = nxt_x;
+            }
+        }
+    }
 }
 
 void region_distribution::redo_multipartitions(index_t x_width, index_t y_width){
@@ -361,7 +418,7 @@ void region_distribution::redo_multipartitions(index_t x_width, index_t y_width)
                     to_opt.push_back(std::reference_wrapper<region>(get_region(l_x, l_y)));
                 }
             }
-            region::redo_partition(to_opt);
+            region::redistribute_cells(to_opt);
         }
     }
     for(index_t x = 0; x+x_width <= x_regions_cnt(); x+=x_width){
@@ -372,18 +429,9 @@ void region_distribution::redo_multipartitions(index_t x_width, index_t y_width)
                     to_opt.push_back(std::reference_wrapper<region>(get_region(l_x, l_y)));
                 }
             }
-            region::redo_partition(to_opt);
+            region::redistribute_cells(to_opt);
         }
     }
-}
-
-void region_distribution::fractions_minimization(){
-    for(region & R : placement_regions_){
-        R.uniquify_references();
-    }
-
-    // Find cycles of cut cells, then find a spanning tree to reallocate the cells
-    // TODO
 }
 
 region_distribution::region_distribution(box<int_t> placement_area, std::vector<movable_cell> all_cells, std::vector<fixed_cell> all_obstacles) : x_regions_cnt_(1), y_regions_cnt_(1), placement_area_(placement_area), cell_list_(all_cells){
@@ -486,9 +534,6 @@ std::vector<float_t> get_optimal_quadratic_pos(std::vector<OSRP_task> cells, flo
     }
     return ret;
 }
-
-
-
 
 std::vector<region_distribution::movable_cell> region_distribution::export_spread_positions() const{
     std::vector<point<float_t> > weighted_pos(cell_list_.size(), point<float_t>(0.0, 0.0));

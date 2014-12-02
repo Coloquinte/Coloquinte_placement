@@ -66,6 +66,7 @@ class region_distribution{
     
     struct region{
         public:
+        // Data members
         capacity_t capacity_; // ==area; No FP!!! 
         point<float_t> pos_;
     
@@ -73,18 +74,33 @@ class region_distribution{
         std::vector<cell_ref> cell_references_;
         std::vector<fixed_cell> obstacles_;
 
-        public:
+        // Constructors
         region(){} // Necessary if we want to resize vectors 
         region(box<int_t> bx, std::vector<fixed_cell> obstacles, std::vector<cell_ref> cells);
-    
-        static void distribute_new_cells(region & a, region & b, std::vector<cell_ref> cells);
-        static void redo_partition(std::vector<std::reference_wrapper<region_distribution::region> > regions);
 
-        void selfcheck() const;
+        // Helper functions for bipartitioning
+        private:
+        static void distribute_new_cells(region & a, region & b, std::vector<cell_ref> cells); // Called by the other two to do the dirty work
+        public:
+        void distribute_cells(region & a, region & b) const;    // Distribute the cells from one region to two
+        static void redistribute_cells(region & a, region & b); // Optimizes the distribution between two regions
         void x_bipartition(region & lft, region & rgt);
         void y_bipartition(region & up , region & dwn);
-        void uniquify_references();
 
+        // Helper functions for multipartitioning
+        // Distribute_cells with a vector as helper function
+        // Distribute_cells and redistribute_cells without a vector to be called
+        private:
+        static void distribute_new_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions, std::vector<cell_ref> cells);
+        public:
+        void distribute_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions) const;
+        static void redistribute_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions);
+
+        public:
+        void uniquify_references();
+        void selfcheck() const;
+
+        // Accessors
         float_t capacity() const;
         float_t allocated_capacity() const;
         float_t unused_capacity() const;
@@ -107,7 +123,6 @@ class region_distribution{
     
     // Reduces the number of cuts in the current solution to at most region_cnt() - 1 without loss of solution quality
     void fractions_minimization();
-    void redo_bipartition(region & Ra, region & Rb);
 
     region & get_region(index_t x_coord, index_t y_coord);
 
@@ -125,14 +140,10 @@ class region_distribution{
     inline index_t fractional_cell_cnt() const;
     
     /*
-     * Two types of cost
-     *    Region center estimation  : upper bound of legalization cost
-     *    Export scaling estimation : lower bound of legalization cost
+     * Two types of export
+     *    Region center             : upper bound of legalization cost
+     *    1D quadratic optimization : lower bound of legalization cost
      */
-    
-    float_t basic_cost() const;
-    float_t cost() const;
-    float_t spread_cost() const;
 
     std::vector<movable_cell> export_positions() const;
     std::vector<movable_cell> export_spread_positions() const;
@@ -143,9 +154,8 @@ class region_distribution{
     
     void x_bipartition();
     void y_bipartition();
-    void quadpartition();
-    void multipartition(index_t width);
     void multipartition(index_t x_width, index_t y_width);
+    void multipartition(index_t width){ multipartition(width, width); }
     
     /*
      * Optimization functions
@@ -153,9 +163,8 @@ class region_distribution{
     
     // Improve bipartitions between closest non-empty neighbours
     void redo_bipartitions();
-    void redo_quadpartitions();
-    void redo_multipartitions(index_t width);
     void redo_multipartitions(index_t x_width, index_t y_width);
+    void redo_multipartitions(index_t width){ redo_multipartitions(width, width); }
 
     // Tries to escape local minimas with long-distance moves to non-filled places
     void line_moves();
