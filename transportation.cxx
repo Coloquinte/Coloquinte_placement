@@ -36,7 +36,8 @@ void current_allocation::update_edge(index_t r1, index_t r2){
     }
 }
 
-void current_allocation::add_source_to_heaps(index_t r, index_t source){
+bool current_allocation::add_source_to_heaps(index_t r, index_t source){
+    bool need_rerun = false;
     for(index_t i=0; i<region_cnt(); ++i){
         if(i == r) continue;
         best_interregions_costs[r][i].push(
@@ -44,7 +45,12 @@ void current_allocation::add_source_to_heaps(index_t r, index_t source){
                 sr_costs[i][source] - sr_costs[r][source]
             )
         );
+        while(sr_allocations[r][best_interregions_costs[r][i].top().source] == 0){
+            best_interregions_costs[r][i].pop();
+        }
+        need_rerun = (best_interregions_costs[r][i].top().source == source) or need_rerun;
     }
+    return need_rerun;
 }
 
 void current_allocation::create_heaps(index_t reg){
@@ -80,23 +86,22 @@ bool current_allocation::push_edge(index_t reg, capacity_t flow){
     sr_allocations[          reg ][cur_source] -= flow;
     sr_allocations[r_parents[reg]][cur_source] += flow;
 
-    assert(sr_allocations[reg][cur_source] >= 0); // The source to be pushed is indeed present in the region
+    assert(sr_allocations[reg][cur_source] >= 0); // The source to be pushed was indeed present in the region
     assert(r_capacities[reg] == 0); // The region is full, which explains why we need to push
     assert(flow <= arc_capacities[reg]); // The flow is not bigger than what can be sent
 
-    // Only if the source was not already present here and we may have to push a source in the destination region
-    if(not already_present and r_capacities[r_parents[reg]] == 0){ 
-        // New source added to a region full region: rerun Dijkstra at the end
-        add_source_to_heaps(r_parents[reg], cur_source);
-        return true;
-    }
-    else if(arc_capacities[reg] == flow){
+    arc_capacities[reg] -= flow; // Just update the capacity if it turns out that we don't need to run Dijkstra
+
+    if(arc_capacities[reg] == 0){
         // The source has been deleted from a region: rerun Dijkstra at the end
         return true;
     }
+    else if(not already_present and r_capacities[r_parents[reg]] == 0){ 
+        // New source added to a region full region: rerun Dijkstra at the end if it changed the heap's top
+        add_source_to_heaps(r_parents[reg], cur_source);
+        return true;
+    }
     else{
-        // arc_capacities[reg] > flow
-        arc_capacities[reg] -= flow;
         // The edge is still present with the same cost and non-zero updated capacity
         // The path still exists: no need to rerun Dijkstra yet
         return false;
@@ -151,9 +156,9 @@ void current_allocation::dijkstra_update(){
     }
 }
 
-capacity_t current_allocation::push_path(index_t pushed_reg, capacity_t demanded){
+bool current_allocation::push_path(index_t pushed_reg, capacity_t demanded, capacity_t & flow){
     // Get the final flow sent, which is smaller than the capacities on the path
-    capacity_t flow = demanded;
+    flow = demanded;
     for(index_t reg = pushed_reg; reg != null_ind; reg = r_parents[reg]){
         flow = std::min(flow, arc_capacities[reg]);
     }
@@ -180,13 +185,12 @@ capacity_t current_allocation::push_path(index_t pushed_reg, capacity_t demanded
         rerun_dijkstra = true;
     }
 
+    assert(flow > 0);
+
     // If an edge changes cost or a region is full,
     // we need to update the costs, parents, sources and arc_capacities using a Dijkstra
-    if(rerun_dijkstra)
-        dijkstra_update();
-
-    assert(flow > 0);
-    return flow;
+    // but later
+    return rerun_dijkstra;
 }
 
 void current_allocation::add_source(capacity_t demand, std::vector<float_t> const & costs){
@@ -198,7 +202,14 @@ void current_allocation::add_source(capacity_t demand, std::vector<float_t> cons
         sr_costs[i].push_back(costs[i]);
         sr_allocations[i].push_back(0);
     }
+    bool need_rerun = false;
     while(demand > 0){
+        // In case we modified the structures earlier
+        if(need_rerun){
+            dijkstra_update();
+            need_rerun = false;
+        }
+
         ++ dijkstra_cnt;
         index_t best_reg = null_ind;
         float_t best_cost = std::numeric_limits<float_t>::infinity();
@@ -211,22 +222,24 @@ void current_allocation::add_source(capacity_t demand, std::vector<float_t> cons
         }
         if(best_reg == null_ind){ throw std::runtime_error("No reachable region found\n"); }
 
-        // Get the path's capacity and update the data structures
-        capacity_t this_path_cap = push_path(best_reg, demand);
-
-        // Substract the fulfilled demand
-        demand -= this_path_cap;
+        capacity_t flow = 0;
+        // Tells us whether we need to update the data structures
+        need_rerun = push_path(best_reg, demand, flow);
+        demand -= flow;
 
         // Lazily store the change
-        sr_allocations[best_reg][elt_ind] += this_path_cap;
+        sr_allocations[best_reg][elt_ind] += flow;
     }
 
     // Set the source's demand
     for(index_t i=0; i<region_cnt(); ++i){
         if(r_capacities[i] == 0 and sr_allocations[i][elt_ind] > 0){
-            add_source_to_heaps(i, elt_ind);
+            need_rerun = add_source_to_heaps(i, elt_ind) or need_rerun;
         }
     }
+    // We leave a clean set with correct paths for the next iteration
+    if(need_rerun)
+        dijkstra_update();
 }
 
 } // Namespace gp

@@ -56,17 +56,18 @@ class current_allocation{
 
     // Update the edge between two regions
     void update_edge(index_t r1, index_t r2);
-    // Add a source to all heaps of a region
-    void add_source_to_heaps(index_t r, index_t source);
+    // Add a source to all heaps of a region; returns if we need to update a path
+    bool add_source_to_heaps(index_t r, index_t source);
     // Initialize the heaps of a region
     void create_heaps(index_t reg);
 
-    // Update the edge and returns if the path has been modified so that we need to rerun Dijkstra
-    bool push_edge(index_t reg, capacity_t flow);
     // Run the shortest path algorithm to update the cost of each region
     void dijkstra_update();
-    // Update a full path when pushing an element, updating the paths
-    capacity_t push_path(index_t pushed_reg, capacity_t demanded);
+
+    // Update the edge and returns if we need to rerun Dijkstra
+    bool push_edge(index_t reg, capacity_t flow);
+    // Updates a full path when pushing an element; returns if we need to rerun Dijkstra
+    bool push_path(index_t pushed_reg, capacity_t demanded, capacity_t & flow);
 
     public:
     // Add a new source to the transportation problem; should be done in decreasing order of demand to keep low complexity
