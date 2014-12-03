@@ -250,7 +250,7 @@ void region_distribution::region::distribute_new_cells(std::vector<std::referenc
         caps.push_back(R.capacity_);
         R.cell_references_.clear();
     }
-    std::sort(all_cells.begin(), all_cells.end(), [](cell_ref const a, cell_ref const b){ return a.allocated_capacity_ > b.allocated_capacity_; });
+    std::sort(all_cells.begin(), all_cells.end(), [](cell_ref const a, cell_ref const b){ return a.allocated_capacity_ > b.allocated_capacity_ or (a.allocated_capacity_ == b.allocated_capacity_ and a.pos_.x_+a.pos_.y_ < b.pos_.x_+b.pos_.y_); });
 
     current_allocation transporter(caps);
     for(auto const C : all_cells){
