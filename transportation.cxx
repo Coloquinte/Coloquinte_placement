@@ -93,13 +93,12 @@ bool current_allocation::push_edge(index_t reg, capacity_t flow){
     arc_capacities[reg] -= flow; // Just update the capacity if it turns out that we don't need to run Dijkstra
 
     if(arc_capacities[reg] == 0){
-        // The source has been deleted from a region: rerun Dijkstra at the end
+        // The source may have been deleted from a region: rerun Dijkstra at the end
         return true;
     }
     else if(not already_present and r_capacities[r_parents[reg]] == 0){ 
-        // New source added to a region full region: rerun Dijkstra at the end if it changed the heap's top
-        add_source_to_heaps(r_parents[reg], cur_source);
-        return true;
+        // A new source is allocated to a full region: rerun Dijkstra at the end if it changed the heap's top
+        return add_source_to_heaps(r_parents[reg], cur_source);
     }
     else{
         // The edge is still present with the same cost and non-zero updated capacity
