@@ -72,6 +72,11 @@ float_t get_mean_quadratic_disruption(netlist const & circuit, placement_t const
 region_distribution get_rough_legalizer(netlist const & circuit, placement_t const & pl, box<int_t> surface);
 void get_result(netlist const & circuit, placement_t & pl, region_distribution const & legalizer);
 
+// Cell orientation optimization
+void optimize_exact_orientations(netlist const & circuit, placement_t & pl);
+void round_orientations(netlist const & circuit, placement_t & pl);
+
+
 } // namespace gp
 } // namespace coloquinte
 
