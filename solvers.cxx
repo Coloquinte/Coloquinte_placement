@@ -323,7 +323,10 @@ std::vector<float_t> linear_system::solve_CG(std::vector<float_t> guess, float_t
     doublet_matrix tmp(matrix_, size());
     csr_matrix mat = tmp.get_compressed_matrix();
     //ellpack_matrix<16> mat = tmp.get_ellpack_matrix<16>();
-    return mat.solve_CG(target_, guess, 100, 200, 1.0/improvement_ratio);
+    guess.resize(target_.size(), 0.0);
+    auto ret = mat.solve_CG(target_, guess, 100, 200, 1.0/improvement_ratio);
+    ret.resize(internal_size());
+    return ret;
 }
 
 }

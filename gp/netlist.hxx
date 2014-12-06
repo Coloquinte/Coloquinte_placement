@@ -113,13 +113,15 @@ class netlist{
         mask_t attributes;
         netlist const & N;
         index_t index;
+        index_t pin_cnt;
 
         internal_cell(index_t ind, netlist const & orig) :
             size(orig.cell_sizes_[ind]),
             area(orig.cell_areas_[ind]),
             attributes(orig.cell_attributes_[ind]),
             N(orig),
-            index(ind)
+            index(ind),
+            pin_cnt(N.cell_limits_[index+1] - N.cell_limits_[index])
             {}
 
         cell_pin_iterator begin(){ return cell_pin_iterator(index, N.cell_limits_[index], N); }
@@ -130,11 +132,13 @@ class netlist{
         float_t weight;
         netlist const & N;
         index_t index;
+        index_t pin_cnt;
 
         internal_net(index_t ind, netlist const & orig) :
             weight(orig.net_weights_[ind]),
             N(orig),
-            index(ind)
+            index(ind),
+            pin_cnt(N.net_limits_[index+1] - N.net_limits_[index])
             {}
 
         net_pin_iterator begin(){ return net_pin_iterator(index, N.net_limits_[index], N); }

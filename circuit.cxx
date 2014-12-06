@@ -3,31 +3,34 @@
 namespace coloquinte{
 namespace gp{
 
-void add_forces(pin_1D const p1, pin_1D const p2, linear_system & L, float_t tol, float_t scale){
+void add_force(pin_1D const p1, pin_1D const p2, linear_system & L, float_t force){
     if(p1.movable && p2.movable){
         L.add_force(
-            tol, scale,
+            force,
             p1.cell_ind, p2.cell_ind,
-            p1.pos,      p2.pos,
             p1.offs,     p2.offs
         );
     }
     else if(p1.movable){
         L.add_fixed_force(
-            tol, scale,
+            force,
             p1.cell_ind,
-            p1.pos, p2.pos,
+            p2.pos,
             p1.offs
         );
     }
     else if(p2.movable){
         L.add_fixed_force(
-            tol, scale,
+            force,
             p2.cell_ind,
-            p2.pos, p1.pos,
+            p1.pos,
             p2.offs
         );
     }
+}
+
+void add_force(pin_1D const p1, pin_1D const p2, linear_system & L, float_t tol, float_t scale){
+    add_force(p1, p2, L, scale/std::max(tol, std::abs(p2.pos-p1.pos)));
 }
 
 point<linear_system> empty_linear_systems(netlist const & circuit, placement_t const & pl){
@@ -79,11 +82,11 @@ void get_HPWLF(std::vector<pin_1D> const & pins, linear_system & L, float_t tol)
 
         for(auto it = pins.begin(); it != pins.end(); ++it){
             // Just comparing the iterator is poorer due to redundancies in the benchmarks!
-            if(it->cell_ind != min_elt->cell_ind){
-                add_forces(*it, *min_elt, L, tol, 1.0/(pins.size()-1));
-            }
-            else if(it->cell_ind != max_elt->cell_ind){ // Hopefully only one connexion between the min and max pins
-                add_forces(*it, *max_elt, L, tol, 1.0/(pins.size()-1));
+            if(it != min_elt){
+                add_force(*it, *min_elt, L, tol, 1.0/(pins.size()-1));
+                if(it != max_elt){ // Hopefully only one connexion between the min and max pins
+                    add_force(*it, *max_elt, L, tol, 1.0/(pins.size()-1));
+                }
             }
         }
     }
@@ -102,6 +105,10 @@ float_t get_HPWL_wirelength(netlist const & circuit, placement_t const & pl){
 point<linear_system> get_HPWLF_linear_system (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s){
     point<linear_system> L = empty_linear_systems(circuit, pl);
     for(index_t i=0; i<circuit.net_cnt(); ++i){
+        // Has the net the right pin count?
+        index_t pin_cnt = circuit.get_net(i).pin_cnt;
+        if(pin_cnt < min_s or pin_cnt >= max_s) continue;
+
         auto pins = get_pins_1D(circuit, pl, i);
         get_HPWLF(pins.x_, L.x_, tol);
         get_HPWLF(pins.y_, L.y_, tol);
@@ -113,16 +120,64 @@ void get_HPWLR(std::vector<pin_1D> const & pins, linear_system & L, float_t tol)
     std::vector<pin_1D> sorted_pins = pins;
     std::sort(sorted_pins.begin(), sorted_pins.end());
     for(index_t i=0; i+1<sorted_pins.size(); ++i){
-        add_forces(sorted_pins[i], sorted_pins[i+1], L, tol, 1.0);
+        add_force(sorted_pins[i], sorted_pins[i+1], L, tol, 1.0);
     }
 }
 
 point<linear_system> get_HPWLR_linear_system (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s){
     point<linear_system> L = empty_linear_systems(circuit, pl);
     for(index_t i=0; i<circuit.net_cnt(); ++i){
+        // Has the net the right pin count?
+        index_t pin_cnt = circuit.get_net(i).pin_cnt;
+        if(pin_cnt < min_s or pin_cnt >= max_s) continue;
+
         auto pins = get_pins_1D(circuit, pl, i);
         get_HPWLR(pins.x_, L.x_, tol);
         get_HPWLR(pins.y_, L.y_, tol);
+    }
+    return L;
+}
+
+void get_star(std::vector<pin_1D> const & pins, linear_system & L, float_t tol, index_t star_index){
+    // The net is empty, but we still populate the diagonal to avoid divide by zeros
+    if(pins.size() < 2){
+        L.add_triplet(star_index, star_index, 1.0);
+        return;
+    }
+
+    auto minmax = std::minmax_element(pins.begin(), pins.end());
+
+    // Get the median position; create the pin
+    float_t med_pos = 0.5* (minmax.second->pos + minmax.first->pos);
+    float_t half_width = 0.5 * (minmax.second->pos - minmax.first->pos);
+    
+    for(pin_1D p : pins){
+        // We want a force of ~1.0 when at the same distance as the extremum
+        // And a force of about 0.0 otherwise
+        // We add a small region of width boundary_tol where this transition takes place, which directly impacts the flexibility of the procedure
+        pin_1D star_pin = pin_1D(star_index, med_pos, 0.0, true);
+        add_force(p, star_pin, L, 1.0/(std::max(tol, half_width)));
+    }
+}
+
+point<linear_system> get_star_linear_system  (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s){
+    point<linear_system> L = empty_linear_systems(circuit, pl);
+    L.x_.add_variables(circuit.net_cnt());
+    L.y_.add_variables(circuit.net_cnt());
+    for(index_t i=0; i<circuit.net_cnt(); ++i){
+        // Has the net the right pin count?
+        index_t pin_cnt = circuit.get_net(i).pin_cnt;
+        if(pin_cnt < min_s or pin_cnt >= max_s){
+            // Put a one in the intermediate variable in order to avoid non-invertible matrices
+            L.x_.add_triplet(i+circuit.cell_cnt(), i+circuit.cell_cnt(), 1.0);
+            L.y_.add_triplet(i+circuit.cell_cnt(), i+circuit.cell_cnt(), 1.0);
+            continue;
+        }
+
+        auto pins = get_pins_1D(circuit, pl, i);
+        // Provide the index of the star's central pin in the linear system
+        get_star(pins.x_, L.x_, tol, i+circuit.cell_cnt());
+        get_star(pins.y_, L.y_, tol, i+circuit.cell_cnt());
     }
     return L;
 }
@@ -131,8 +186,8 @@ void get_result(netlist const & circuit, placement_t & pl, point<linear_system> 
     std::vector<float_t> x_sol, y_sol;
     std::vector<float_t> x_guess(pl.cell_cnt()), y_guess(pl.cell_cnt());
     
-    assert(L.x_.size() == x_guess.size());
-    assert(L.y_.size() == y_guess.size());
+    assert(L.x_.internal_size() == x_guess.size());
+    assert(L.y_.internal_size() == y_guess.size());
 
     for(index_t i=0; i<pl.cell_cnt(); ++i){
         x_guess[i] = pl.positions_[i].x_;
@@ -185,7 +240,6 @@ point<linear_system> get_pulling_forces (netlist const & circuit, placement_t co
         );
     }
     
-
     return L;
 }
 
