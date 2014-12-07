@@ -1,4 +1,4 @@
-#include "gp/circuit.hxx"
+#include "Coloquinte/circuit.hxx"
 
 namespace coloquinte{
 namespace gp{
