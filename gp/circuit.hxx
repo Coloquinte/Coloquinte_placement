@@ -53,7 +53,7 @@ point<linear_system> empty_linear_systems(netlist const & circuit, placement_t c
 // Net models stuff
 point<linear_system> get_HPWLF_linear_system (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s);
 point<linear_system> get_HPWLR_linear_system (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s);
-point<linear_system> get_star_linear_system  (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s);
+point<linear_system> get_star_linear_system  (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s, float_t pull_lim);
 point<linear_system> get_MST_linear_system   (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s);
 
 // Additional forces

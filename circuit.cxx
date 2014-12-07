@@ -138,7 +138,7 @@ point<linear_system> get_HPWLR_linear_system (netlist const & circuit, placement
     return L;
 }
 
-void get_star(std::vector<pin_1D> const & pins, linear_system & L, float_t tol, index_t star_index){
+void get_star(std::vector<pin_1D> const & pins, linear_system & L, float_t tol, index_t star_index, float_t pull_lim){
     // The net is empty, but we still populate the diagonal to avoid divide by zeros
     if(pins.size() < 2){
         L.add_triplet(star_index, star_index, 1.0);
@@ -150,17 +150,34 @@ void get_star(std::vector<pin_1D> const & pins, linear_system & L, float_t tol, 
     // Get the median position; create the pin
     float_t med_pos = 0.5* (minmax.second->pos + minmax.first->pos);
     float_t half_width = 0.5 * (minmax.second->pos - minmax.first->pos);
-    
+    assert(half_width >= 0.0);
+    if(pull_lim < 0.0 or pull_lim >= 1.0) throw std::runtime_error("The pull limit must be between 0.0 and 1.0, exclusive of 1.0\n");
+
     for(pin_1D p : pins){
         // We want a force of ~1.0 when at the same distance as the extremum
         // And a force of about 0.0 otherwise
-        // We add a small region of width boundary_tol where this transition takes place, which directly impacts the flexibility of the procedure
-        pin_1D star_pin = pin_1D(star_index, med_pos, 0.0, true);
-        add_force(p, star_pin, L, 1.0/(std::max(tol, half_width)));
+        // This is done with an offset applied to the star pin, which make it coincide with the pin if it is not too close
+        // If it is too close (<= 1/4 of the distance) we use an offset applied to the pin
+        if(p.pos - med_pos > pull_lim * half_width){
+            // Use a pin offset and a force to pull the pin toward the star pin
+            //pin_1D star_pin = pin_1D(star_index, med_pos, pull_lim * half_width, true);
+            //add_force(p, star_pin, L, 1.0/(std::max(tol, smallest_dist)));
+            pin_1D star_pin = pin_1D(star_index, med_pos, 0.0, true);
+            add_force(p, star_pin, L, 1.0/(std::max(tol, half_width)));
+        }
+        else if(p.pos - med_pos < -pull_lim * half_width){
+            pin_1D star_pin = pin_1D(star_index, med_pos, 0.0, true);
+            add_force(p, star_pin, L, 1.0/(std::max(tol, half_width)));
+        }
+        else{
+            pin_1D star_pin = pin_1D(star_index, med_pos, p.pos - med_pos, true);
+            float_t loc_dist = half_width - std::abs(p.pos - med_pos);
+            add_force(p, star_pin, L, 1.0/(std::max(tol, loc_dist)));
+        }
     }
 }
 
-point<linear_system> get_star_linear_system  (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s){
+point<linear_system> get_star_linear_system  (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s, float_t pull_lim){
     point<linear_system> L = empty_linear_systems(circuit, pl);
     L.x_.add_variables(circuit.net_cnt());
     L.y_.add_variables(circuit.net_cnt());
@@ -176,8 +193,8 @@ point<linear_system> get_star_linear_system  (netlist const & circuit, placement
 
         auto pins = get_pins_1D(circuit, pl, i);
         // Provide the index of the star's central pin in the linear system
-        get_star(pins.x_, L.x_, tol, i+circuit.cell_cnt());
-        get_star(pins.y_, L.y_, tol, i+circuit.cell_cnt());
+        get_star(pins.x_, L.x_, tol, i+circuit.cell_cnt(), pull_lim);
+        get_star(pins.y_, L.y_, tol, i+circuit.cell_cnt(), pull_lim);
     }
     return L;
 }
