@@ -15,10 +15,12 @@ detailed_placement::detailed_placement(
         std::vector<index_t>  heights,
         std::vector<std::vector<index_t> > rows,
         int_t min_x, int_t max_x,
+        int_t y_origin,
         index_t nbr_rows, int_t row_height
     )
     :
         min_x_(min_x), max_x_(max_x),
+        y_origin_(y_origin),
         row_height_(row_height),
         positions_(positions),
         cell_rows_(row_positions),

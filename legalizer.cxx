@@ -7,6 +7,33 @@
 namespace coloquinte{
 namespace dp{
 
+float_t get_mean_linear_disruption(netlist const & circuit, gp::placement_t const & gpl, detailed_placement const & dpl){
+    float_t val = 0.0, tot_area = 0.0;
+    for(index_t c=0; c<circuit.cell_cnt(); ++c){
+        float_t x_diff = dpl.positions_[c] + 0.5 * circuit.get_cell(c).size.x_ - gpl.positions_[c].x_;
+        float_t y_diff = dpl.cell_rows_[c] * dpl.row_height_ + dpl.y_origin_ + 0.5 * circuit.get_cell(c).size.y_- gpl.positions_[c].y_;
+        float_t area = static_cast<float_t>(circuit.get_cell(c).area);
+
+        val += area * (std::abs(x_diff) + std::abs(y_diff));
+        tot_area += area;
+    }
+    return val / tot_area;
+}
+
+float_t get_mean_quadratic_disruption(netlist const & circuit, gp::placement_t const & gpl, detailed_placement const & dpl){
+    float_t val = 0.0, tot_area = 0.0;
+    for(index_t c=0; c<circuit.cell_cnt(); ++c){
+        float_t x_diff = dpl.positions_[c] + 0.5 * circuit.get_cell(c).size.x_ - gpl.positions_[c].x_;
+        float_t y_diff = dpl.cell_rows_[c] * dpl.row_height_ + dpl.y_origin_ + 0.5 * circuit.get_cell(c).size.y_- gpl.positions_[c].y_;
+        float_t area = static_cast<float_t>(circuit.get_cell(c).area);
+
+        float_t dist = std::abs(x_diff) + std::abs(y_diff);
+        val += area * dist * dist;
+        tot_area += area;
+    }
+    return val / tot_area;
+}
+
 struct cell_to_leg{
     int_t x_pos, y_pos;
     index_t original_cell;
@@ -131,11 +158,11 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
                     auto it=row_occupation[r+i].rbegin();
                     for(; it != row_occupation[r+i].rend() && it->max_x <= cur_pos; ++it){
                     }
-                    if(it != row_occupation[r+i].rend()){
+                    if(it != row_occupation[r+i].rend()){ // There is an obstacle on the right
                         assert(it->min_x < it->max_x);
                         int_t cur_lim = it->min_x - cell.width; // Where the obstacles contrains us
                         interval_lim = std::min(cur_lim, interval_lim); // Constraint
-                        if(cur_lim < cur_pos){ // If this particular obstacle constrained us
+                        if(cur_lim < cur_pos){ // If this particular obstacle constrained us so that it is not possible to make it here, we increment the position
                             cur_pos = std::max(it->max_x, cur_pos);
                         }
                     }
@@ -212,6 +239,7 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
         cell_height,
         cells_by_rows,
         surface.x_min_, surface.x_max_,
+        surface.y_min_,
         nbr_rows, row_height
     );
 }

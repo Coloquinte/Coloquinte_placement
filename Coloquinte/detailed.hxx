@@ -3,6 +3,7 @@
 #define COLOQUINTE_DETAILED
 
 #include "common.hxx"
+#include "netlist.hxx"
 
 #include <vector>
 
@@ -14,6 +15,7 @@ const index_t null_ind = 0;
 struct detailed_placement{
     // The placement region
     int_t min_x_, max_x_;
+    int_t y_origin_;
     int_t row_height_;
 
     // Encode the topological state of the circuit: which cells are near each other
@@ -40,6 +42,7 @@ struct detailed_placement{
             std::vector<index_t> heights,
             std::vector<std::vector<index_t> > rows,
             int_t min_x, int_t max_x,
+            int_t y_origin,
             index_t nbr_rows, int_t row_height
         );
 
@@ -47,6 +50,8 @@ struct detailed_placement{
     index_t cell_cnt() const{ return cell_lims_.size() - 1; }
     index_t row_cnt()  const{ return row_first_cells_.size(); }
 };
+
+float_t get_HPWL_wirelength(netlist const & circuit, detailed_placement const & pl);
 
 } // namespace dp
 } // namespace coloquinte
