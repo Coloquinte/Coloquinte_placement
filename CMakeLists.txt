@@ -22,12 +22,15 @@
                                            Coloquinte/solvers.hxx
                                            Coloquinte/rough_legalizers.hxx
                                            Coloquinte/transportation.hxx
+                                           Coloquinte/detailed.hxx
                        )	           
                    set ( cpps              circuit.cxx
                                            rough_legalizers.cxx
                                            solvers.cxx
                                            transportation.cxx
                                            orientation.cxx
+                                           detailed.cxx
+                                           legalizer.cxx
                        )
                    set ( coloquintecpps    main.cxx )
 					   
