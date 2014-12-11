@@ -11,7 +11,6 @@
 #include <cassert>
 
 namespace coloquinte{
-
 namespace gp{
 
 struct placement_t{
@@ -23,30 +22,6 @@ struct placement_t{
         return positions_.size();
     }
 };
-
-
-struct pin_1D{
-    index_t cell_ind;
-    float_t pos;
-    float_t offs;
-    bool movable;
-
-    bool operator<(pin_1D const o) const { return pos < o.pos; }
-
-    pin_1D(index_t c, float_t p, float_t o, bool m) : cell_ind(c), pos(p), offs(o), movable(m){}
-};
-struct pin_2D{
-    index_t        cell_ind;
-    point<float_t> pos;
-    point<float_t> offs;
-    bool movable;
-
-    pin_2D(index_t c, point<float_t> p, point<float_t> o, bool m) : cell_ind(c), pos(p), offs(o), movable(m){}
-};
-
-point<std::vector<pin_1D> > get_pins_1D(netlist const & circuit, placement_t const & pl, index_t net_ind);
-std::vector<pin_2D>         get_pins_2D(netlist const & circuit, placement_t const & pl, index_t net_ind);
-
 
 point<linear_system> empty_linear_systems(netlist const & circuit, placement_t const & pl);
 
@@ -75,7 +50,6 @@ void get_result(netlist const & circuit, placement_t & pl, region_distribution c
 // Cell orientation optimization
 void optimize_exact_orientations(netlist const & circuit, placement_t & pl);
 void round_orientations(netlist const & circuit, placement_t & pl);
-
 
 } // namespace gp
 } // namespace coloquinte

@@ -17,6 +17,7 @@
 #                         ${Coloquinte_SOURCE_DIR}/src
 #                       )
                    set ( includes          Coloquinte/circuit.hxx
+                                           Coloquinte/circuit_helper.hxx
                                            Coloquinte/common.hxx
                                            Coloquinte/netlist.hxx
                                            Coloquinte/solvers.hxx

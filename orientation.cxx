@@ -6,7 +6,7 @@
  *
  */
 
-#include "Coloquinte/circuit.hxx"
+#include "Coloquinte/circuit_helper.hxx"
 
 namespace coloquinte{
 namespace gp{
