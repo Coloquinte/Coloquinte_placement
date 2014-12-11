@@ -309,6 +309,10 @@ float_t get_mean_linear_disruption(netlist const & circuit, placement_t const & 
     for(index_t i=0; i<circuit.cell_cnt(); ++i){
         float_t area = static_cast<float_t>(circuit.get_cell(i).area);
         point<float_t> diff = LB_pl.positions_[i] - UB_pl.positions_[i];
+
+        if( (circuit.get_cell(i).attributes & XMovable) == 0.0) assert(diff.x_ == 0.0);
+        if( (circuit.get_cell(i).attributes & YMovable) == 0.0) assert(diff.y_ == 0.0);
+
         tot_cost += area * (std::abs(diff.x_) + std::abs(diff.y_));
         tot_area += area;
     }
@@ -321,6 +325,10 @@ float_t get_mean_quadratic_disruption(netlist const & circuit, placement_t const
     for(index_t i=0; i<circuit.cell_cnt(); ++i){
         float_t area = static_cast<float_t>(circuit.get_cell(i).area);
         point<float_t> diff = LB_pl.positions_[i] - UB_pl.positions_[i];
+
+        if( (circuit.get_cell(i).attributes & XMovable) == 0.0) assert(diff.x_ == 0.0);
+        if( (circuit.get_cell(i).attributes & YMovable) == 0.0) assert(diff.y_ == 0.0);
+
         float_t manhattan = (std::abs(diff.x_) + std::abs(diff.y_));
         tot_cost += area * manhattan * manhattan;
         tot_area += area;
