@@ -154,11 +154,11 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
                         }
                     }
                 }
-                // Do it again until we are past the optimal solution
+                // Do it again until we find a solution
+                // TODO: continue until we can't find a better solution (currently sticks before the first obstacle if there is enough whitespace)
             }while(interval_lim < cur_pos and interval_lim < max_lim and cur_pos < max_lim); // Not admissible and we encountered an obstacle and there is still hope
 
-            if(interval_lim >= cur_pos){ // An admissible solution is found
-                // TODO: if the solution may not be the optimal one, try it again
+            if(interval_lim >= cur_pos){ // An admissible solution is found (and if cell.x_pos is between cur_pos and interval_lim it is optimal)
                 int_t row_best_x = std::min(interval_lim, std::max(cur_pos, cell.x_pos));
                 int_t row_cost_x = std::abs(row_best_x - cell.x_pos);
                 if(not found_location or row_cost_x + additional_cost < best_cost){
@@ -174,7 +174,7 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
         if(C.nbr_rows > nbr_rows) throw std::runtime_error("Impossible to legalize a cell spanning more rows than are available\n");
         index_t central_row = std::min( (index_t) std::max( (C.y_pos - surface.y_min_) / row_height, 0), nbr_rows-C.nbr_rows);
 
-        // Try every possible row from the center, until we can't improve the cost
+        // Try every possible row from the best one, until we can't improve the cost
         for(index_t row_dist = 0;
             (central_row + row_dist < nbr_rows or central_row >= row_dist)
             and (not found_location or static_cast<int_t>(row_dist) * row_height < best_cost);
@@ -188,7 +188,7 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
             }
         }
 
-        if(not found_location){
+        if(not found_location){ // We didn't find any whitespace to put the cell in
             throw std::runtime_error("Didn't manage to pack a cell due to dumb algorithm\n");
         }
         else{
@@ -219,6 +219,7 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
         }
     }
 
+    // Get the orientations
     std::vector<bool> x_orientation(circuit.cell_cnt()), y_orientation(circuit.cell_cnt());
     for(index_t c=0; c<circuit.cell_cnt(); ++c){
         x_orientation[c] = pl.orientations_[c].x_ >= 0.0;
