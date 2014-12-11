@@ -6,11 +6,12 @@
 #include "netlist.hxx"
 
 #include <vector>
+#include <limits>
 
 namespace coloquinte{
 namespace dp{
 
-const index_t null_ind = 0;
+const index_t null_ind = std::numeric_limits<index_t>::max();
 
 struct detailed_placement{
     // The placement region
@@ -43,7 +44,7 @@ struct detailed_placement{
             std::vector<index_t> heights,
             std::vector<bool> x_orientations,
             std::vector<bool> y_orientations,
-            std::vector<std::vector<index_t> > rows,
+            std::vector<std::vector<index_t> > const rows,
             int_t min_x, int_t max_x,
             int_t y_origin,
             index_t nbr_rows, int_t row_height

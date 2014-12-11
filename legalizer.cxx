@@ -45,6 +45,137 @@ struct fixed_cell_interval{
     fixed_cell_interval(int_t mn, int_t mx, index_t ind) : min_x(mn), max_x(mx), cell_ind(ind){}
 };
 
+struct cell_leg_properties{
+    int_t x_pos;
+    index_t row_pos;
+    index_t ind;
+};
+
+std::vector<cell_leg_properties> simple_legalize(
+        std::vector<std::vector<fixed_cell_interval> > obstacles, std::vector<cell_to_leg> cells,
+        std::vector<std::vector<index_t> > & rows,
+        int_t x_min, int_t x_max, int_t y_orig,
+        int_t row_height, index_t nbr_rows
+    ){
+
+    std::vector<int_t> first_available_position(nbr_rows, x_min);
+    rows.resize(nbr_rows);
+
+    // Sort the cells by x position
+    std::sort(cells.begin(), cells.end());
+
+    std::vector<cell_leg_properties> ret;
+
+    for(cell_to_leg C : cells){
+        // Dumb, quick and dirty best-fit legalization
+        bool found_location = false;
+
+        // Properties of the current best solution
+        int_t best_x=0;
+        int_t best_cost=0;
+        index_t best_row=0;
+
+        // Helper function
+        auto check_row_cost = [&](index_t r, cell_to_leg const cell, int_t additional_cost){
+            // Find where to put the cell in these rows
+            // Simple method: get a range where we can put the cell
+
+            assert(r + cell.nbr_rows <= nbr_rows);
+            assert(additional_cost >= 0);
+
+            // First position where we can put it
+            int_t cur_pos = *std::max_element(first_available_position.begin() + r, first_available_position.begin() + r + cell.nbr_rows);
+            int_t max_lim = x_max - cell.width;
+            int_t interval_lim;
+            do{
+                interval_lim = max_lim;
+                // For each row, test if obstacles prevent us from putting a cell here
+                // Until we find a correct position or are beyond the maximum position
+                for(index_t i = 0; i<cell.nbr_rows; ++i){
+                    // Find the first obstacle which is after this position
+                    // TODO: use lower/upper bound
+                    auto it=obstacles[r+i].rbegin();
+                    for(; it != obstacles[r+i].rend() && it->max_x <= cur_pos; ++it){
+                    }
+                    if(it != obstacles[r+i].rend()){ // There is an obstacle on the right
+                        assert(it->min_x < it->max_x);
+                        int_t cur_lim = it->min_x - cell.width; // Where the obstacles contrains us
+                        interval_lim = std::min(cur_lim, interval_lim); // Constraint
+                        if(cur_lim < cur_pos){ // If this particular obstacle constrained us so that it is not possible to make it here, we increment the position
+                            cur_pos = std::max(it->max_x, cur_pos);
+                        }
+                    }
+                }
+                // Do it again until we find a solution
+                // TODO: continue until we can't find a better solution (currently sticks before the first obstacle if there is enough whitespace)
+            }while(interval_lim < cur_pos and interval_lim < max_lim and cur_pos < max_lim); // Not admissible and we encountered an obstacle and there is still hope
+
+            if(interval_lim >= cur_pos){ // An admissible solution is found (and if cell.x_pos is between cur_pos and interval_lim it is optimal)
+                int_t row_best_x = std::min(interval_lim, std::max(cur_pos, cell.x_pos));
+                int_t row_cost_x = std::abs(row_best_x - cell.x_pos);
+                if(not found_location or row_cost_x + additional_cost < best_cost){
+                    found_location = true;
+                    best_cost = row_cost_x + additional_cost;
+                    best_x = row_best_x;
+                    best_row = r;
+                }
+            }
+        };
+
+        // The row where we would prefer the cell to go
+        if(C.nbr_rows > nbr_rows) throw std::runtime_error("Impossible to legalize a cell spanning more rows than are available\n");
+        index_t central_row = std::min( (index_t) std::max( (C.y_pos - y_orig) / row_height, 0), nbr_rows-C.nbr_rows);
+
+        // Try every possible row from the best one, until we can't improve the cost
+        for(index_t row_dist = 0;
+            (central_row + row_dist < nbr_rows or central_row >= row_dist)
+            and (not found_location or static_cast<int_t>(row_dist) * row_height < best_cost);
+            ++row_dist
+        ){
+            if(central_row + row_dist < nbr_rows - C.nbr_rows){
+                check_row_cost(central_row + row_dist, C, row_dist * row_height);
+            }
+            if(central_row >= row_dist){
+                check_row_cost(central_row - row_dist, C, row_dist * row_height);
+            }
+        }
+
+        if(not found_location){ // We didn't find any whitespace to put the cell in
+            throw std::runtime_error("Didn't manage to pack a cell due to dumb algorithm\n");
+        }
+        else{
+            assert(best_x + C.width <= x_max and best_x >= x_min);
+            // Update the occupied rows
+            for(index_t r = best_row; r < best_row + C.nbr_rows; ++r){
+                // Include the obstacles
+                while(not obstacles[r].empty()
+                    and obstacles[r].back().max_x <= best_x){
+                    rows[r].push_back(obstacles[r].back().cell_ind);
+                    obstacles[r].pop_back();
+                }
+                assert(obstacles[r].empty() or obstacles[r].back().min_x >= best_x + C.width);
+
+                rows[r].push_back(C.original_cell);
+                first_available_position[r] = best_x + C.width;
+            }
+
+            cell_leg_properties res;
+            res.x_pos = best_x; res.row_pos = best_row; res.ind = C.original_cell;
+            ret.push_back(res);
+        }
+    }
+
+    // Finally, push the remaining fixed cells
+    for(index_t r=0; r<nbr_rows; ++r){
+        while(not obstacles[r].empty()){
+            rows[r].push_back(obstacles[r].back().cell_ind);
+            obstacles[r].pop_back();
+        }
+    }
+
+    return ret;
+}
+
 detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl, box<int_t> surface, int_t row_height){
     if(row_height <= 0) throw std::runtime_error("The rows' height should be positive\n");
 
@@ -108,115 +239,16 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
         }
     }
 
-    std::vector<std::vector<index_t> > cells_by_rows(nbr_rows);
-    std::vector<int_t> first_available_position(nbr_rows, surface.x_min_);
+    std::vector<std::vector<index_t> > cells_by_rows;
 
-    // Sort the cells by x position
-    std::sort(cells.begin(), cells.end());
+    auto final_cells = simple_legalize(row_occupation, cells, cells_by_rows,
+        surface.x_min_, surface.x_max_, surface.y_min_,
+        row_height, nbr_rows
+    );
 
-    for(cell_to_leg C : cells){
-        // Dumb, quick and dirty best-fit legalization
-        bool found_location = false;
-
-        // Properties of the current best solution
-        int_t best_x=0;
-        int_t best_cost=0;
-        index_t best_row=0;
-
-        // Helper function
-        auto check_row_cost = [&](index_t r, cell_to_leg const cell, int_t additional_cost){
-            // Find where to put the cell in these rows
-            // Simple method: get a range where we can put the cell
-
-            assert(r + cell.nbr_rows <= nbr_rows);
-            assert(additional_cost >= 0);
-
-            // First position where we can put it
-            int_t cur_pos = *std::max_element(first_available_position.begin() + r, first_available_position.begin() + r + cell.nbr_rows);
-            int_t max_lim = surface.x_max_ - cell.width;
-            int_t interval_lim;
-            do{
-                interval_lim = max_lim;
-                // For each row, test if obstacles prevent us from putting a cell here
-                // Until we find a correct position or are beyond the maximum position
-                for(index_t i = 0; i<cell.nbr_rows; ++i){
-                    // Find the first obstacle which is after this position
-                    // TODO: use lower/upper bound
-                    auto it=row_occupation[r+i].rbegin();
-                    for(; it != row_occupation[r+i].rend() && it->max_x <= cur_pos; ++it){
-                    }
-                    if(it != row_occupation[r+i].rend()){ // There is an obstacle on the right
-                        assert(it->min_x < it->max_x);
-                        int_t cur_lim = it->min_x - cell.width; // Where the obstacles contrains us
-                        interval_lim = std::min(cur_lim, interval_lim); // Constraint
-                        if(cur_lim < cur_pos){ // If this particular obstacle constrained us so that it is not possible to make it here, we increment the position
-                            cur_pos = std::max(it->max_x, cur_pos);
-                        }
-                    }
-                }
-                // Do it again until we find a solution
-                // TODO: continue until we can't find a better solution (currently sticks before the first obstacle if there is enough whitespace)
-            }while(interval_lim < cur_pos and interval_lim < max_lim and cur_pos < max_lim); // Not admissible and we encountered an obstacle and there is still hope
-
-            if(interval_lim >= cur_pos){ // An admissible solution is found (and if cell.x_pos is between cur_pos and interval_lim it is optimal)
-                int_t row_best_x = std::min(interval_lim, std::max(cur_pos, cell.x_pos));
-                int_t row_cost_x = std::abs(row_best_x - cell.x_pos);
-                if(not found_location or row_cost_x + additional_cost < best_cost){
-                    found_location = true;
-                    best_cost = row_cost_x + additional_cost;
-                    best_x = row_best_x;
-                    best_row = r;
-                }
-            }
-        };
-
-        // The row where we would prefer the cell to go
-        if(C.nbr_rows > nbr_rows) throw std::runtime_error("Impossible to legalize a cell spanning more rows than are available\n");
-        index_t central_row = std::min( (index_t) std::max( (C.y_pos - surface.y_min_) / row_height, 0), nbr_rows-C.nbr_rows);
-
-        // Try every possible row from the best one, until we can't improve the cost
-        for(index_t row_dist = 0;
-            (central_row + row_dist < nbr_rows or central_row >= row_dist)
-            and (not found_location or static_cast<int_t>(row_dist) * row_height < best_cost);
-            ++row_dist
-        ){
-            if(central_row + row_dist < nbr_rows - C.nbr_rows){
-                check_row_cost(central_row + row_dist, C, row_dist * row_height);
-            }
-            if(central_row >= row_dist){
-                check_row_cost(central_row - row_dist, C, row_dist * row_height);
-            }
-        }
-
-        if(not found_location){ // We didn't find any whitespace to put the cell in
-            throw std::runtime_error("Didn't manage to pack a cell due to dumb algorithm\n");
-        }
-        else{
-            assert(best_x + C.width <= surface.x_max_ and best_x >= surface.x_min_);
-            // Update the occupied rows
-            for(index_t r = best_row; r < best_row + C.nbr_rows; ++r){
-                // Include the obstacles
-                while(not row_occupation[r].empty()
-                    and row_occupation[r].back().max_x <= best_x){
-                    cells_by_rows[r].push_back(row_occupation[r].back().cell_ind);
-                    row_occupation[r].pop_back();
-                }
-                assert(row_occupation[r].empty() or row_occupation[r].back().min_x >= best_x + C.width);
-
-                cells_by_rows[r].push_back(C.original_cell);
-                first_available_position[r] = best_x + C.width;
-            }
-            cell_pos[C.original_cell] = best_x;
-            row_index[C.original_cell] = best_row;
-        }
-    }
-
-    // Finally, push the remaining fixed cells
-    for(index_t r=0; r<nbr_rows; ++r){
-        while(not row_occupation[r].empty()){
-            cells_by_rows[r].push_back(row_occupation[r].back().cell_ind);
-            row_occupation[r].pop_back();
-        }
+    for(cell_leg_properties C : final_cells){
+        cell_pos[C.ind] = C.x_pos;
+        row_index[C.ind] = C.row_pos;
     }
 
     // Get the orientations

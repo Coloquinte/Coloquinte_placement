@@ -2,8 +2,6 @@
 #include "Coloquinte/detailed.hxx"
 
 #include <cassert>
-#include <iostream>
-
 
 namespace coloquinte{
 namespace dp{
@@ -15,7 +13,7 @@ detailed_placement::detailed_placement(
         std::vector<index_t>  heights,
         std::vector<bool> x_orientations,
         std::vector<bool> y_orientations,
-        std::vector<std::vector<index_t> > rows,
+        std::vector<std::vector<index_t> > const rows,
         int_t min_x, int_t max_x,
         int_t y_origin,
         index_t nbr_rows, int_t row_height
@@ -50,47 +48,42 @@ detailed_placement::detailed_placement(
 
     cells_before_ .resize(nbr_lims, null_ind);
     cells_after_  .resize(nbr_lims, null_ind);
-    std::vector<bool> explored(nbr_lims, false);
 
     row_first_cells_ .resize(nbr_rows, null_ind);
     row_last_cells_  .resize(nbr_rows, null_ind);
 
-    for(index_t i=0; i<cell_cnt(); ++i){
-        assert(row_positions[i] + heights[i] <= nbr_rows);
-        assert(cell_hght(i) == heights[i]);
-    }
-
+    std::vector<bool> explored(nbr_lims, false);
     // Now we extract the dependencies
     for(index_t r=0; r<rows.size(); ++r){
+
+        if(not rows[r].empty()){
+            row_first_cells_[r] = rows[r].front();
+            row_last_cells_[r]  = rows[r].back();
+        }
+
+        for(index_t c : rows[r]){
+            // The row_positions are correct
+            assert( r >= cell_rows_[c] and r < cell_rows_[c] + cell_hght(c));
+
+            // Has this row of the cell already been visited?
+            assert(not explored[cell_lims_[c] + r - cell_rows_[c]]);
+            explored[cell_lims_[c] + r - cell_rows_[c]] = true;
+        }
+
         for(index_t i=0; i+1<rows[r].size(); ++i){
             index_t c1 = rows[r][i], c2 = rows[r][i+1];
-            // The row_positions are correct
-            assert( r >= row_positions[c1]
-                and r >= row_positions[c2]
-                and r < row_positions[c1] + cell_hght(c1)
-                and r < row_positions[c2] + cell_hght(c2)
-            );
-            // The positions are correct
-            assert( positions[c1] + widths[c1] <= positions[c2] );
+            assert(c1 < 1000000 && c2 < 1000000);
 
             // Save in the internal format
-            cells_after_ [cell_lims_[c1] + r - row_positions[c1]] = c2;
-            cells_before_[cell_lims_[c2] + r - row_positions[c2]] = c1;
-        }
-        for(index_t c : rows[r]){
-            // Has it already been set?
-            if(explored[cell_lims_[c] + r - row_positions[c]]){
-                std::cout << "Already visited cell " << c << " at row " << r << " with width " << widths[c] << " at row " << row_positions[c] << " and position " << positions[c] << std::endl;
-                abort();
-            }
-            explored[cell_lims_[c] + r - row_positions[c]] = true;
-        }
-        if(not rows[r].empty()){
-            row_first_cells_[r] = rows[r][0];
-            row_last_cells_[r]  = rows[r].back();
+            cells_after_ [cell_lims_[c1] + r - cell_rows_[c1]] = c2;
+            cells_before_[cell_lims_[c2] + r - cell_rows_[c2]] = c1;
+
+            // The positions are correct
+            assert( positions[c1] + widths[c1] <= positions[c2] );
         }
     }
 
+    // Every level of every cell must have been visited
     for(bool o : explored)
         assert(o);
 
