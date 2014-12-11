@@ -32,35 +32,7 @@ class linear_system{
     public:
     void add_triplet(index_t row, index_t col, float_t val){ matrix_.push_back(matrix_triplet(row, col, val)); }
 
-    linear_system operator+(linear_system const & o) const{
-        if(o.internal_size() != internal_size()){ throw std::runtime_error("Mismatched system sizes"); }
-        linear_system ret(target_.size() + o.target_.size() - internal_size(), internal_size());
-
-        ret.matrix_ = matrix_;
-        std::vector<matrix_triplet> omatrix = o.matrix_;
-        for(matrix_triplet & t : omatrix){
-            if(t.c_ >= internal_size()){
-                t.c_ += (target_.size() - internal_size());
-            }
-            if(t.r_ >= internal_size()){
-                t.r_ += (target_.size() - internal_size());
-            }
-        }
-        ret.matrix_.insert(ret.matrix_.end(), omatrix.begin(), omatrix.end());
-
-        // ret.target_.resize(target_.size() + o.target_.size() - internal_size);
-        for(index_t i=0; i<internal_size(); ++i){
-            ret.target_[i] = target_[i] + o.target_[i];
-        }
-        for(index_t i=internal_size(); i<target_.size(); ++i){
-            ret.target_[i] = target_[i];
-        }
-        for(index_t i=internal_size(); i<o.target_.size(); ++i){
-            ret.target_[i + target_.size() - internal_size()] = o.target_[i];
-        }
-
-        return ret;
-    }
+    linear_system operator+(linear_system const & o) const;
 
     void add_doublet(index_t row, float_t val){
         target_[row] += val;
