@@ -32,6 +32,7 @@ struct detailed_placement{
     // The size of the cell
     std::vector<int_t> widths_;
 
+    std::vector<bool> x_orientations_, y_orientations_;
     // Tests the coherency between positions, widths and topological representation
     void selfcheck() const;
 
@@ -40,6 +41,8 @@ struct detailed_placement{
             std::vector<index_t> row_positions,
             std::vector<int_t> widths,
             std::vector<index_t> heights,
+            std::vector<bool> x_orientations,
+            std::vector<bool> y_orientations,
             std::vector<std::vector<index_t> > rows,
             int_t min_x, int_t max_x,
             int_t y_origin,

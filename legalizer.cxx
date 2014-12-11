@@ -7,31 +7,18 @@
 namespace coloquinte{
 namespace dp{
 
-float_t get_mean_linear_disruption(netlist const & circuit, gp::placement_t const & gpl, detailed_placement const & dpl){
-    float_t val = 0.0, tot_area = 0.0;
+void get_result(netlist const & circuit, detailed_placement const & dpl, gp::placement_t & gpl){
     for(index_t c=0; c<circuit.cell_cnt(); ++c){
-        float_t x_diff = dpl.positions_[c] + 0.5 * circuit.get_cell(c).size.x_ - gpl.positions_[c].x_;
-        float_t y_diff = dpl.cell_rows_[c] * dpl.row_height_ + dpl.y_origin_ + 0.5 * circuit.get_cell(c).size.y_- gpl.positions_[c].y_;
-        float_t area = static_cast<float_t>(circuit.get_cell(c).area);
+        if( (circuit.get_cell(c).attributes & XMovable) != 0)
+            gpl.positions_[c].x_ = static_cast<float_t>(dpl.positions_[c]) + 0.5 * circuit.get_cell(c).size.x_;
+        if( (circuit.get_cell(c).attributes & YMovable) != 0)
+            gpl.positions_[c].y_ = static_cast<float_t>(dpl.y_origin_) + dpl.cell_rows_[c] * dpl.row_height_ + 0.5 * circuit.get_cell(c).size.y_;
 
-        val += area * (std::abs(x_diff) + std::abs(y_diff));
-        tot_area += area;
+        if( (circuit.get_cell(c).attributes & XFlippable) != 0)
+            gpl.orientations_[c].x_ = dpl.x_orientations_[c] ? 1.0 : -1.0;
+        if( (circuit.get_cell(c).attributes & YFlippable) != 0)
+            gpl.orientations_[c].y_ = dpl.y_orientations_[c] ? 1.0 : -1.0;
     }
-    return val / tot_area;
-}
-
-float_t get_mean_quadratic_disruption(netlist const & circuit, gp::placement_t const & gpl, detailed_placement const & dpl){
-    float_t val = 0.0, tot_area = 0.0;
-    for(index_t c=0; c<circuit.cell_cnt(); ++c){
-        float_t x_diff = dpl.positions_[c] + 0.5 * circuit.get_cell(c).size.x_ - gpl.positions_[c].x_;
-        float_t y_diff = dpl.cell_rows_[c] * dpl.row_height_ + dpl.y_origin_ + 0.5 * circuit.get_cell(c).size.y_- gpl.positions_[c].y_;
-        float_t area = static_cast<float_t>(circuit.get_cell(c).area);
-
-        float_t dist = std::abs(x_diff) + std::abs(y_diff);
-        val += area * dist * dist;
-        tot_area += area;
-    }
-    return val / tot_area;
 }
 
 struct cell_to_leg{
@@ -232,11 +219,19 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
         }
     }
 
+    std::vector<bool> x_orientation(circuit.cell_cnt()), y_orientation(circuit.cell_cnt());
+    for(index_t c=0; c<circuit.cell_cnt(); ++c){
+        x_orientation[c] = pl.orientations_[c].x_ >= 0.0;
+        y_orientation[c] = pl.orientations_[c].y_ >= 0.0;
+    }
+
     return detailed_placement(
         cell_pos,
         row_index,
         cell_width,
         cell_height,
+        x_orientation,
+        y_orientation,
         cells_by_rows,
         surface.x_min_, surface.x_max_,
         surface.y_min_,

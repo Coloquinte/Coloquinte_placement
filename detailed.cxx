@@ -13,6 +13,8 @@ detailed_placement::detailed_placement(
         std::vector<index_t>  row_positions,
         std::vector<int_t>    widths,
         std::vector<index_t>  heights,
+        std::vector<bool> x_orientations,
+        std::vector<bool> y_orientations,
         std::vector<std::vector<index_t> > rows,
         int_t min_x, int_t max_x,
         int_t y_origin,
@@ -24,7 +26,9 @@ detailed_placement::detailed_placement(
         row_height_(row_height),
         positions_(positions),
         cell_rows_(row_positions),
-        widths_(widths)
+        widths_(widths),
+        x_orientations_(x_orientations),
+        y_orientations_(y_orientations)
     {
 
     index_t sz = positions.size();
@@ -95,8 +99,13 @@ detailed_placement::detailed_placement(
 }
 
 void detailed_placement::selfcheck() const{
-    assert(cells_before_.size() == cells_after_.size());
-    assert(cell_rows_.size() == widths_.size() && widths_.size() == positions_.size());
+    assert(cells_before_.size()   == cells_after_.size());
+    assert( cell_rows_.size()     == cell_cnt()
+        and widths_.size()        == cell_cnt()
+        and positions_.size()     == cell_cnt()
+        and x_orientations_.size() == cell_cnt()
+        and y_orientations_.size() == cell_cnt()
+    );
     assert(row_first_cells_.size() == row_last_cells_.size());
 
     for(index_t i=0; i<cell_cnt(); ++i){
@@ -111,7 +120,7 @@ void detailed_placement::selfcheck() const{
             }
             else{
                 // Beginning of a row
-                //assert(row_first_cells_[cell_rows_[i] + l - cell_lims_[i]] == i);
+                assert(row_first_cells_[cell_rows_[i] + l - cell_lims_[i]] == i);
             }
             if(cells_after_[l] != null_ind){
                 // Correct neighbour position
@@ -119,7 +128,7 @@ void detailed_placement::selfcheck() const{
             }
             else{
                 // End of a row
-                //assert(row_last_cells_[cell_rows_[i] + l - cell_lims_[i]] == i);
+                assert(row_last_cells_[cell_rows_[i] + l - cell_lims_[i]] == i);
             }
         }
     }
