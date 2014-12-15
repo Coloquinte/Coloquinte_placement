@@ -1,5 +1,6 @@
 
 #include "Coloquinte/legalizer.hxx"
+#include "Coloquinte/ordered_single_row.hxx"
 
 #include <algorithm>
 #include <cmath>
@@ -36,6 +37,8 @@ struct cell_to_leg{
     width(w),
     nbr_rows(rows)
     {}
+
+    legalizable_task<int_t> task() const{ return legalizable_task<int_t>(width, x_pos, original_cell); }
 };
 
 struct fixed_cell_interval{
@@ -178,103 +181,6 @@ std::vector<cell_leg_properties> simple_legalize(
     return ret;
 }
 
-// A class to obtain the optimal positions minimizing total weighted displacement along a row
-// It is an ordered single row problem/fixed order single machine scheduling problem, solved by the clumping/specialized cascading descent algorithm
-// The cost is linear in the distance to the target position, weighted by the width of the cells
-struct OSRP_leg{
-    struct OSRP_bound{
-        int_t absolute_pos; // Will be the target absolute position of the cell
-        int_t weight;       // Will be the width of the cell
-    
-        bool operator<(OSRP_bound const o) const{ return absolute_pos < o.absolute_pos; }
-        OSRP_bound(int_t w, int_t abs_pos) : absolute_pos(abs_pos), weight(w) {}
-    };
-
-    int_t begin, end;
-
-    std::vector<index_t> cells;            // The indexes in the circuit
-    std::vector<int_t>   constraining_pos; // Where the cells have been pushed and constrain the positions of preceding cells
-    std::vector<int_t>   prev_width;       // Cumulative width of the cells: calculates the absolute position of new cells
-
-    std::priority_queue<OSRP_bound> bounds;
-
-    int_t current_width() const{ return prev_width.back(); }
-    int_t remaining_space() const{ return end - begin - current_width(); }
-    int_t last_available_pos() const{ return constraining_pos.back() + current_width(); }
-
-    // Get the cost of pushing a cell on the row
-    int_t get_displacement(cell_to_leg const newly_pushed, bool update){
-        int_t target_abs_pos = newly_pushed.x_pos - current_width();
-        int_t width = newly_pushed.width;
-        int_t slope = - width;
-
-        int_t cur_pos  = end;
-        int_t cur_cost = 0;
-
-        std::vector<OSRP_bound> passed_bounds;
-
-        while( (slope < 0 or cur_pos > end - current_width())
-           and not bounds.empty() and bounds.top().absolute_pos > target_abs_pos){
-            slope += bounds.top().weight;
-            int_t old_pos = cur_pos;
-            cur_pos = bounds.top().absolute_pos;
-            cur_cost += (old_pos - cur_pos) * (slope + width); // The additional cost for the other cells encountered
-
-            // Remember which bounds we encountered in order to reset the object to its initial state
-            if(not update)
-                passed_bounds.push_back(bounds.top());
-            bounds.pop();
-        }
-
-        int_t final_abs_pos = std::min(end - current_width() - width, // Always before the end
-                                        std::max(begin, slope >= 0 ? cur_pos : target_abs_pos) // Always after the beginning, but did we stop before reaching the target position? 
-                                    );
-        assert(final_abs_pos >= begin);
-        assert(final_abs_pos <= end - current_width() - width);
-
-        if(update){
-            prev_width.push_back(width + current_width());
-            cells.push_back(newly_pushed.original_cell);
-            constraining_pos.push_back(final_abs_pos);
-            if(slope > 0){ // Remaining capacity of an encountered bound
-                bounds.push(OSRP_bound(slope, cur_pos));
-            }
-            // The new bound, minus what it absorbs of the remaining slope
-            if(target_abs_pos > begin){
-                bounds.push(OSRP_bound(2*width + std::min(slope, 0), target_abs_pos));
-            }
-        }
-        else{
-            for(OSRP_bound b : passed_bounds){
-                bounds.push(b);
-            }
-        }
-
-        return cur_cost + width * std::abs(final_abs_pos - target_abs_pos); // Add the cost of the new cell
-    }
-
-    // Initialize
-    OSRP_leg(int_t b, int_t e) : begin(b), end(e), prev_width(1, 0) {}
-    OSRP_leg(){}
-
-    typedef std::pair<index_t, int_t> result_t;
-    // Get the resulting placement
-    std::vector<result_t> get_placement() const{
-        auto final_abs_pos = constraining_pos;
-        std::partial_sum(final_abs_pos.rbegin(), final_abs_pos.rend(), final_abs_pos.rbegin(), [](int_t a, int_t b)->int_t{ return std::min(a,b); });
-
-        std::vector<result_t> ret(cells.size());
-        for(index_t i=0; i<cells.size(); ++i){
-            ret[i] = result_t(cells[i], final_abs_pos[i] + prev_width[i]);
-            assert(final_abs_pos[i] >= begin);
-            assert(final_abs_pos[i] + prev_width[i+1] <= end);
-        }
-        return ret;
-    }
-
-};
-
-
 // A better legalization function which is able to push already legalized cells
 std::vector<cell_leg_properties> good_legalize(
         std::vector<std::vector<fixed_cell_interval> > obstacles, std::vector<cell_to_leg> cells,
@@ -293,9 +199,9 @@ std::vector<cell_leg_properties> good_legalize(
     //    * a new standard cell gets past an obstacle
 
     // The current group of standard cells on the right of the row
-    std::vector<OSRP_leg> single_row_problems(nbr_rows);
+    std::vector<OSRP_leg<int_t> > single_row_problems(nbr_rows);
     for(index_t r=0; r<nbr_rows; ++r){
-        single_row_problems[r] = OSRP_leg(x_min, obstacles[r].empty() ? x_max : obstacles[r].back().min_x);
+        single_row_problems[r] = OSRP_leg<int_t>(x_min, obstacles[r].empty() ? x_max : obstacles[r].back().min_x);
     }
     rows.resize(nbr_rows);
 
@@ -331,7 +237,7 @@ std::vector<cell_leg_properties> good_legalize(
                 int_t loc_obstacles_passed = 0;
                 if(found_here){
                     // Check the cost of pushing it here with possible displacement
-                    cur_cost = single_row_problems[r].get_displacement(cell, false); // Don't update the row
+                    cur_cost = single_row_problems[r].get_displacement(cell.task(), false); // Don't update the row
                 }
 
                 // Other positions where we can put it, without moving other cells this time
@@ -396,7 +302,7 @@ std::vector<cell_leg_properties> good_legalize(
 
             if(C.nbr_rows == 1){
                 if(obstacles_passed == 0){ // Ok; just update the old single row problem
-                    single_row_problems[best_row].get_displacement(C, true); // Push it to the row
+                    single_row_problems[best_row].get_displacement(C.task(), true); // Push it to the row
                 }
                 else{
                     assert(obstacles_passed > 0);
@@ -414,9 +320,9 @@ std::vector<cell_leg_properties> good_legalize(
                         obstacles[best_row].pop_back();
                     }
                     int_t region_end = obstacles[best_row].empty() ? x_max : obstacles[best_row].back().min_x;
-                    single_row_problems[best_row] = OSRP_leg(region_begin, region_end);
+                    single_row_problems[best_row] = OSRP_leg<int_t>(region_begin, region_end);
                     assert(region_end - region_begin >= C.width);
-                    single_row_problems[best_row].get_displacement(C, true); // Push this only cell to the single row problem
+                    single_row_problems[best_row].get_displacement(C.task(), true); // Push this only cell to the single row problem
                 }
             }
             else{

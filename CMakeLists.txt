@@ -24,6 +24,7 @@
                                            Coloquinte/rough_legalizers.hxx
                                            Coloquinte/transportation.hxx
                                            Coloquinte/detailed.hxx
+                                           Coloquinte/ordered_single_row.hxx
                        )	           
                    set ( cpps              circuit.cxx
                                            rough_legalizers.cxx
