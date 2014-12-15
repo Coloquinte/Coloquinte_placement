@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <queue>
 
 namespace coloquinte{
 namespace dp{
@@ -46,9 +47,12 @@ struct fixed_cell_interval{
 };
 
 struct cell_leg_properties{
-    int_t x_pos;
+    int_t   x_pos;
     index_t row_pos;
     index_t ind;
+
+    cell_leg_properties(){}
+    cell_leg_properties(int_t x, int_t r, index_t i) : x_pos(x), row_pos(r), ind(i){}
 };
 
 std::vector<cell_leg_properties> simple_legalize(
@@ -159,9 +163,7 @@ std::vector<cell_leg_properties> simple_legalize(
                 first_available_position[r] = best_x + C.width;
             }
 
-            cell_leg_properties res;
-            res.x_pos = best_x; res.row_pos = best_row; res.ind = C.original_cell;
-            ret.push_back(res);
+            ret.push_back(cell_leg_properties(best_x, best_row, C.original_cell));
         }
     }
 
@@ -175,6 +177,271 @@ std::vector<cell_leg_properties> simple_legalize(
 
     return ret;
 }
+
+// A class to obtain the optimal positions minimizing total weighted displacement along a row
+// It is an ordered single row problem/fixed order single machine scheduling problem, solved by the clumping/specialized cascading descent algorithm
+// The cost is linear in the distance to the target position, weighted by the width of the cells
+struct OSRP_leg{
+    struct OSRP_bound{
+        int_t absolute_pos; // Will be the target absolute position of the cell
+        int_t weight;       // Will be the width of the cell
+    
+        bool operator<(OSRP_bound const o) const{ return absolute_pos < o.absolute_pos; }
+        OSRP_bound(int_t w, int_t abs_pos) : absolute_pos(abs_pos), weight(w) {}
+    };
+
+    int_t begin, end;
+
+    std::vector<index_t> cells;            // The indexes in the circuit
+    std::vector<int_t>   constraining_pos; // Where the cells have been pushed and constrain the positions of preceding cells
+    std::vector<int_t>   prev_width;       // Cumulative width of the cells: calculates the absolute position of new cells
+
+    std::priority_queue<OSRP_bound> bounds;
+
+    int_t current_width() const{ return prev_width.back(); }
+    int_t remaining_space() const{ return end - begin - current_width(); }
+    int_t last_available_pos() const{ return constraining_pos.back() + current_width(); }
+
+    // Get the cost of pushing a cell on the row
+    int_t get_displacement(cell_to_leg const newly_pushed, bool update){
+        int_t target_abs_pos = newly_pushed.x_pos - current_width();
+        int_t width = newly_pushed.width;
+        int_t slope = - width;
+
+        int_t cur_pos  = end;
+        int_t cur_cost = 0;
+
+        std::vector<OSRP_bound> passed_bounds;
+
+        while( (slope < 0 or cur_pos > end - current_width())
+           and not bounds.empty() and bounds.top().absolute_pos > target_abs_pos){
+            slope += bounds.top().weight;
+            int_t old_pos = cur_pos;
+            cur_pos = bounds.top().absolute_pos;
+            cur_cost += (old_pos - cur_pos) * (slope + width); // The additional cost for the other cells encountered
+
+            // Remember which bounds we encountered in order to reset the object to its initial state
+            if(not update)
+                passed_bounds.push_back(bounds.top());
+            bounds.pop();
+        }
+
+        int_t final_abs_pos = std::min(end - current_width() - width, // Always before the end
+                                        std::max(begin, slope >= 0 ? cur_pos : target_abs_pos) // Always after the beginning, but did we stop before reaching the target position? 
+                                    );
+        assert(final_abs_pos >= begin);
+        assert(final_abs_pos <= end - current_width() - width);
+
+        if(update){
+            prev_width.push_back(width + current_width());
+            cells.push_back(newly_pushed.original_cell);
+            constraining_pos.push_back(final_abs_pos);
+            if(slope > 0){ // Remaining capacity of an encountered bound
+                bounds.push(OSRP_bound(slope, cur_pos));
+            }
+            // The new bound, minus what it absorbs of the remaining slope
+            if(target_abs_pos > begin){
+                bounds.push(OSRP_bound(2*width + std::min(slope, 0), target_abs_pos));
+            }
+        }
+        else{
+            for(OSRP_bound b : passed_bounds){
+                bounds.push(b);
+            }
+        }
+
+        return cur_cost + width * std::abs(final_abs_pos - target_abs_pos); // Add the cost of the new cell
+    }
+
+    // Initialize
+    OSRP_leg(int_t b, int_t e) : begin(b), end(e), prev_width(1, 0) {}
+    OSRP_leg(){}
+
+    typedef std::pair<index_t, int_t> result_t;
+    // Get the resulting placement
+    std::vector<result_t> get_placement() const{
+        auto final_abs_pos = constraining_pos;
+        std::partial_sum(final_abs_pos.rbegin(), final_abs_pos.rend(), final_abs_pos.rbegin(), [](int_t a, int_t b)->int_t{ return std::min(a,b); });
+
+        std::vector<result_t> ret(cells.size());
+        for(index_t i=0; i<cells.size(); ++i){
+            ret[i] = result_t(cells[i], final_abs_pos[i] + prev_width[i]);
+            assert(final_abs_pos[i] >= begin);
+            assert(final_abs_pos[i] + prev_width[i+1] <= end);
+        }
+        return ret;
+    }
+
+};
+
+
+// A better legalization function which is able to push already legalized cells
+std::vector<cell_leg_properties> good_legalize(
+        std::vector<std::vector<fixed_cell_interval> > obstacles, std::vector<cell_to_leg> cells,
+        std::vector<std::vector<index_t> > & rows,
+        int_t x_min, int_t x_max, int_t y_orig,
+        int_t row_height, index_t nbr_rows
+    ){
+
+    // Two possibilities:
+    //    * Single OSRP (group of movable cells) at the current end of the row of standard cells
+    //    * Multiple OSRPs, between each pair of obstacles
+    //          -> allows pushing cells past obstacles
+    //          -> tricky with multiple standard cell heights
+    // Therefore I chose single OSRP, which gets cleared and pushed to the final state whenever
+    //    * we encounter a multiple-rows cell
+    //    * a new standard cell gets past an obstacle
+
+    // The current group of standard cells on the right of the row
+    std::vector<OSRP_leg> single_row_problems(nbr_rows);
+    for(index_t r=0; r<nbr_rows; ++r){
+        single_row_problems[r] = OSRP_leg(x_min, obstacles[r].empty() ? x_max : obstacles[r].back().min_x);
+    }
+    rows.resize(nbr_rows);
+
+    // Sort the cells by x position
+    std::sort(cells.begin(), cells.end());
+
+    std::vector<cell_leg_properties> ret;
+
+    for(cell_to_leg C : cells){
+        // Dumb, quick and dirty best-fit legalization
+        bool found_location = false;
+
+        // Properties of the current best solution
+        int_t best_cost=0;
+        index_t best_row=0;
+        index_t obstacles_passed = 0;
+
+        // Helper function
+        auto check_row_cost = [&](index_t r, cell_to_leg const cell, int_t additional_cost){
+            // Find where to put the cell in these rows
+            // Check if we can put it in the current ranges and at what cost; if not or if the optimal position is beyond an obstacle, try after this obstacle too
+
+            assert(cell.nbr_rows > 0);
+            assert(r + cell.nbr_rows <= nbr_rows);
+            assert(additional_cost >= 0);
+
+            // Where can we put a standard cell if we allow to move the cells?
+            if(cell.nbr_rows == 1){
+                int_t cur_cost = 0;
+
+                // Can we simply add it to the single row problem?
+                bool found_here = single_row_problems[r].remaining_space() >= cell.width;
+                int_t loc_obstacles_passed = 0;
+                if(found_here){
+                    // Check the cost of pushing it here with possible displacement
+                    cur_cost = single_row_problems[r].get_displacement(cell, false); // Don't update the row
+                }
+
+                // Other positions where we can put it, without moving other cells this time
+                if(not found_here or cur_cost > 0){
+                    index_t obstacles_to_throw = 0;
+                    auto it = obstacles[r].rbegin();
+                    while(it != obstacles[r].rend()){
+                        ++ obstacles_to_throw;
+                        auto prev_it = it++;
+                        int_t region_end = it != obstacles[r].rend() ? it->min_x : x_max;
+                        if(region_end >= prev_it->max_x + cell.width){
+                            int_t loc_x = std::min(region_end - cell.width, std::max(prev_it->max_x, cell.x_pos));
+                            int_t loc_cost = cell.width * std::abs(cell.x_pos - loc_x);
+                            if(not found_here or cur_cost > loc_cost){
+                                found_here = true;
+                                cur_cost = loc_cost;
+                                loc_obstacles_passed = obstacles_to_throw;
+                            }
+                        }
+                    }
+                }
+                if(found_here and (not found_location or cur_cost + additional_cost < best_cost)){
+                    found_location = true;
+                    //std::cout << "Found with displacement cost " << cur_cost << " and total cost " << cur_cost + additional_cost << std::endl;
+                    best_cost = cur_cost + additional_cost;
+                    best_row = r;
+                    obstacles_passed = loc_obstacles_passed;
+                    if(loc_obstacles_passed > 0) assert(not obstacles[r].empty());
+                }
+            }
+            else{
+                // If it is a fixed cell, we use fixed locations
+                throw std::runtime_error("I don't handle fucking macros\n");
+            }
+        };
+
+        // The row where we would prefer the cell to go
+        if(C.nbr_rows > nbr_rows) throw std::runtime_error("Impossible to legalize a cell spanning more rows than are available\n");
+        index_t central_row = std::min( (index_t) std::max( (C.y_pos - y_orig) / row_height, 0), nbr_rows-C.nbr_rows);
+
+        // Try every possible row from the best one, until we can't improve the cost
+        for(index_t row_dist = 0;
+            (central_row + row_dist < nbr_rows or central_row >= row_dist)
+            and (not found_location or static_cast<int_t>(row_dist) * row_height * C.width < best_cost);
+            ++row_dist
+        ){
+            if(central_row + row_dist < nbr_rows - C.nbr_rows){
+                check_row_cost(central_row + row_dist, C, row_dist * row_height * C.width);
+            }
+            if(central_row >= row_dist){
+                check_row_cost(central_row - row_dist, C, row_dist * row_height * C.width);
+            }
+        }
+
+        if(not found_location){ // We didn't find any whitespace to put the cell in
+            throw std::runtime_error("Didn't manage to pack a cell due to dumb algorithm\n");
+        }
+        else{
+            //std::cout << "Cell " << C.original_cell << " of width " << C.width << " targetting row " << central_row << " and position " << C.x_pos << " put at row " << best_row << " with displacement " << best_cost / C.width << " with " << obstacles_passed << " obstacles passed" << std::endl;
+            // If the cell spans multiple rows, it becomes fixed
+            // In this case or if the cell goes after an obstacle, push everything before the cell to the fixed state
+
+            if(C.nbr_rows == 1){
+                if(obstacles_passed == 0){ // Ok; just update the old single row problem
+                    single_row_problems[best_row].get_displacement(C, true); // Push it to the row
+                }
+                else{
+                    assert(obstacles_passed > 0);
+                    // Empty the single row problem
+                    for(auto p : single_row_problems[best_row].get_placement()){
+                        rows[best_row].push_back(p.first);
+                        ret.push_back(cell_leg_properties(p.second, best_row, p.first));
+                    }
+                    // Find where to put it
+                    int_t region_begin = x_min;
+                    for(index_t i=0; i<obstacles_passed; ++i){
+                        assert(not obstacles[best_row].empty());
+                        region_begin = obstacles[best_row].back().max_x;
+                        rows[best_row].push_back(obstacles[best_row].back().cell_ind);
+                        obstacles[best_row].pop_back();
+                    }
+                    int_t region_end = obstacles[best_row].empty() ? x_max : obstacles[best_row].back().min_x;
+                    single_row_problems[best_row] = OSRP_leg(region_begin, region_end);
+                    assert(region_end - region_begin >= C.width);
+                    single_row_problems[best_row].get_displacement(C, true); // Push this only cell to the single row problem
+                }
+            }
+            else{
+                throw std::runtime_error("I don't handle fucking macros\n");
+            }
+        }
+    }
+
+    for(index_t r=0; r<nbr_rows; ++r){
+        // Finally, push the remaining standard cells in the row
+        for(auto p : single_row_problems[r].get_placement()){
+            rows[r].push_back(p.first);
+            ret.push_back(cell_leg_properties(p.second, r, p.first));
+        }
+        // And the fixed cells
+        while(not obstacles[r].empty()){
+            rows[r].push_back(obstacles[r].back().cell_ind);
+            obstacles[r].pop_back();
+        }
+    }
+
+    rows.resize(nbr_rows);
+    return ret;
+}
+
 
 detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl, box<int_t> surface, int_t row_height){
     if(row_height <= 0) throw std::runtime_error("The rows' height should be positive\n");
@@ -241,7 +508,7 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
 
     std::vector<std::vector<index_t> > cells_by_rows;
 
-    auto final_cells = simple_legalize(row_occupation, cells, cells_by_rows,
+    auto final_cells = good_legalize(row_occupation, cells, cells_by_rows,
         surface.x_min_, surface.x_max_, surface.y_min_,
         row_height, nbr_rows
     );
