@@ -3,6 +3,7 @@
 #define COLOQUINTE_OSRP
 
 #include "common.hxx"
+
 #include <queue>
 
 namespace coloquinte{
@@ -13,13 +14,14 @@ struct legalizable_task{
     T target_pos;
     index_t ind;
     legalizable_task(T w, T p, index_t i) : width(w), target_pos(p), ind(i){}
+    bool operator<(legalizable_task<T> const o) const{ return target_pos < o.target_pos; }
 };
 
 // A class to obtain the optimal positions minimizing total weighted displacement along a row
 // It is an ordered single row problem/fixed order single machine scheduling problem, solved by the clumping/specialized cascading descent algorithm
 // The cost is linear in the distance to the target position, weighted by the width of the cells
 template<typename T>
-struct OSRP_leg{
+class OSRP_leg{
     struct OSRP_bound{
         T absolute_pos; // Will be the target absolute position of the cell
         T weight;       // Will be the width of the cell
@@ -35,10 +37,6 @@ struct OSRP_leg{
     std::vector<T>   prev_width;       // Cumulative width of the cells: calculates the absolute position of new cells
 
     std::priority_queue<OSRP_bound> bounds;
-
-    T current_width() const{ return prev_width.back(); }
-    T remaining_space() const{ return end - begin - current_width(); }
-    T last_available_pos() const{ return constraining_pos.back() + current_width(); }
 
     // Get the cost of pushing a cell on the row
     T get_displacement(legalizable_task<T> const newly_pushed, bool update){
@@ -67,8 +65,8 @@ struct OSRP_leg{
         T final_abs_pos = std::min(end - current_width() - width, // Always before the end
                                 std::max(begin, slope >= 0 ? cur_pos : target_abs_pos) // Always after the beginning, but did we stop before reaching the target position? 
                                     );
-        assert(final_abs_pos >= begin);
-        assert(final_abs_pos <= end - current_width() - width);
+        //assert(final_abs_pos >= begin);
+        //assert(final_abs_pos <= end - current_width() - width);
 
         if(update){
             prev_width.push_back(width + current_width());
@@ -79,7 +77,7 @@ struct OSRP_leg{
             }
             // The new bound, minus what it absorbs of the remaining slope
             if(target_abs_pos > begin){
-                bounds.push(OSRP_bound(2*width + std::min(slope, 0), target_abs_pos));
+                bounds.push(OSRP_bound(2*width + std::min(slope, static_cast<T>(0) ), target_abs_pos));
             }
         }
         else{
@@ -90,6 +88,14 @@ struct OSRP_leg{
 
         return cur_cost + width * std::abs(final_abs_pos - target_abs_pos); // Add the cost of the new cell
     }
+
+    public:
+    T current_width() const{ return prev_width.back(); }
+    T remaining_space() const{ return end - begin - current_width(); }
+    T last_available_pos() const{ return constraining_pos.back() + current_width(); }
+
+    T get_cost(legalizable_task<T> const task){ return get_displacement(task, false); }
+    void push(legalizable_task<T> const task){ get_displacement(task, true); }
 
     // Initialize
     OSRP_leg(T b, T e) : begin(b), end(e), prev_width(1, 0) {}
@@ -104,8 +110,8 @@ struct OSRP_leg{
         std::vector<result_t> ret(cells.size());
         for(index_t i=0; i<cells.size(); ++i){
             ret[i] = result_t(cells[i], final_abs_pos[i] + prev_width[i]);
-            assert(final_abs_pos[i] >= begin);
-            assert(final_abs_pos[i] + prev_width[i+1] <= end);
+            //assert(final_abs_pos[i] >= begin);
+            //assert(final_abs_pos[i] + prev_width[i+1] <= end);
         }
         return ret;
     }

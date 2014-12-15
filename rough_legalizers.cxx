@@ -1,6 +1,7 @@
 
 #include "Coloquinte/rough_legalizers.hxx"
 #include "Coloquinte/transportation.hxx"
+#include "Coloquinte/ordered_single_row.hxx"
 
 #include <algorithm>
 #include <cmath>
@@ -535,7 +536,7 @@ std::vector<float_t> get_optimal_quadratic_pos(std::vector<OSRP_task> cells, flo
     return ret;
 }
 
-std::vector<region_distribution::movable_cell> region_distribution::export_spread_positions() const{
+std::vector<region_distribution::movable_cell> region_distribution::export_spread_positions_quadratic() const{
     std::vector<point<float_t> > weighted_pos(cell_list_.size(), point<float_t>(0.0, 0.0));
 
     for(region const & R : placement_regions_){
@@ -558,6 +559,57 @@ std::vector<region_distribution::movable_cell> region_distribution::export_sprea
                   static_cast<float_t>(R.cell_references_[i].allocated_capacity_)
                 * point<float_t>(x_ret[i], y_ret[i]);
         }
+    }
+
+    std::vector<movable_cell> ret;
+    for(index_t i=0; i<cell_list_.size(); ++i){
+        movable_cell C = cell_list_[i];
+        C.pos_ = ( static_cast<float_t>(1.0) / static_cast<float_t>(C.demand_) ) * weighted_pos[i];
+        ret.push_back(C);
+    }
+    return ret;
+}
+
+std::vector<region_distribution::movable_cell> region_distribution::export_spread_positions_linear() const{
+    std::vector<point<float_t> > weighted_pos(cell_list_.size(), point<float_t>(0.0, 0.0));
+
+    for(region const & R : placement_regions_){
+        index_t n = R.cell_references_.size();
+        float_t total_capacity = static_cast<float_t>(R.capacity());
+        box<float_t> surface = static_cast<box<float_t> >(R.surface_);
+
+        std::vector<legalizable_task<float_t> > x_cells, y_cells;
+
+        for(auto const C : R.cell_references_){
+            float_t cap = static_cast<float_t>(C.allocated_capacity_);
+            float_t x_cap_prop = cap/total_capacity * (surface.x_max_ - surface.x_min_),
+                    y_cap_prop = cap/total_capacity * (surface.y_max_ - surface.y_min_);
+            x_cells.push_back(legalizable_task<float_t>(x_cap_prop, C.pos_.x_, C.index_in_list_));
+            y_cells.push_back(legalizable_task<float_t>(y_cap_prop, C.pos_.y_, C.index_in_list_));
+        }
+
+        OSRP_leg<float_t> x_leg(surface.x_min_, surface.x_max_), y_leg(surface.y_min_, surface.y_max_);
+
+        std::sort(x_cells.begin(), x_cells.end());
+        for(legalizable_task<float_t> & C : x_cells)
+            C.target_pos -= 0.5 * C.width;
+        for(legalizable_task<float_t> & C : x_cells)
+            x_leg.push(C);
+        auto x_pl = x_leg.get_placement();
+        for(index_t i=0; i<n; ++i){
+            weighted_pos[x_pl[i].first].x_ += x_pl[i].second * static_cast<float_t>(x_cells[i].width * total_capacity / (surface.x_max_ - surface.x_min_));
+        }
+
+        std::sort(y_cells.begin(), y_cells.end());
+        for(legalizable_task<float_t> & C : y_cells)
+            C.target_pos -= 0.5 * C.width;
+        for(legalizable_task<float_t> & C : y_cells)
+            y_leg.push(C);
+        auto y_pl = y_leg.get_placement();
+        for(index_t i=0; i<n; ++i){
+            weighted_pos[y_pl[i].first].y_ += y_pl[i].second * static_cast<float_t>(y_cells[i].width * total_capacity / (surface.y_max_ - surface.y_min_));
+        }
+
     }
 
     std::vector<movable_cell> ret;

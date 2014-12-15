@@ -237,7 +237,7 @@ std::vector<cell_leg_properties> good_legalize(
                 int_t loc_obstacles_passed = 0;
                 if(found_here){
                     // Check the cost of pushing it here with possible displacement
-                    cur_cost = single_row_problems[r].get_displacement(cell.task(), false); // Don't update the row
+                    cur_cost = single_row_problems[r].get_cost(cell.task()); // Don't update the row
                 }
 
                 // Other positions where we can put it, without moving other cells this time
@@ -302,7 +302,7 @@ std::vector<cell_leg_properties> good_legalize(
 
             if(C.nbr_rows == 1){
                 if(obstacles_passed == 0){ // Ok; just update the old single row problem
-                    single_row_problems[best_row].get_displacement(C.task(), true); // Push it to the row
+                    single_row_problems[best_row].push(C.task()); // Push it to the row
                 }
                 else{
                     assert(obstacles_passed > 0);
@@ -322,7 +322,7 @@ std::vector<cell_leg_properties> good_legalize(
                     int_t region_end = obstacles[best_row].empty() ? x_max : obstacles[best_row].back().min_x;
                     single_row_problems[best_row] = OSRP_leg<int_t>(region_begin, region_end);
                     assert(region_end - region_begin >= C.width);
-                    single_row_problems[best_row].get_displacement(C.task(), true); // Push this only cell to the single row problem
+                    single_row_problems[best_row].push(C.task()); // Push this only cell to the single row problem
                 }
             }
             else{

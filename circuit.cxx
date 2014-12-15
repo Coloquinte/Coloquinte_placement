@@ -271,7 +271,7 @@ region_distribution get_rough_legalizer(netlist const & circuit, placement_t con
 }
 
 void get_result(netlist const & circuit, placement_t & pl, region_distribution const & legalizer){
-    auto exportation = legalizer.export_spread_positions();
+    auto exportation = legalizer.export_spread_positions_linear();
     for(auto const C : exportation){
         pl.positions_[C.index_in_placement_] = C.pos_;
     }

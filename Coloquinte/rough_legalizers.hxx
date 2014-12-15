@@ -147,7 +147,8 @@ class region_distribution{
      */
 
     std::vector<movable_cell> export_positions() const;
-    std::vector<movable_cell> export_spread_positions() const;
+    std::vector<movable_cell> export_spread_positions_quadratic() const;
+    std::vector<movable_cell> export_spread_positions_linear() const;
 
     // The cost as seen by the partitioning algorithms (but not the export)
     float_t cost() const;
