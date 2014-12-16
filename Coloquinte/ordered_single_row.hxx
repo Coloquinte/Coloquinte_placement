@@ -5,6 +5,7 @@
 #include "common.hxx"
 
 #include <queue>
+#include <limits>
 
 namespace coloquinte{
 
@@ -49,8 +50,10 @@ class OSRP_leg{
 
         std::vector<OSRP_bound> passed_bounds;
 
-        while( (slope < 0 or cur_pos > end - current_width())
-           and not bounds.empty() and bounds.top().absolute_pos > target_abs_pos){
+        while( not bounds.empty() and
+            ((slope < 0 and bounds.top().absolute_pos > target_abs_pos) // Not reached equilibrium
+            or bounds.top().absolute_pos > end - current_width() - width) // Still not a legal position
+            ){
             slope += bounds.top().weight;
             T old_pos = cur_pos;
             cur_pos = bounds.top().absolute_pos;
@@ -62,11 +65,16 @@ class OSRP_leg{
             bounds.pop();
         }
 
-        T final_abs_pos = std::min(end - current_width() - width, // Always before the end
-                                std::max(begin, slope >= 0 ? cur_pos : target_abs_pos) // Always after the beginning, but did we stop before reaching the target position? 
+        T final_abs_pos = std::min(end - current_width() - width, // Always before the end and after the beginning
+                                std::max(begin, slope >= 0 ? cur_pos : target_abs_pos) // but did we stop before reaching the target position? 
                                     );
-        //assert(final_abs_pos >= begin);
-        //assert(final_abs_pos <= end - current_width() - width);
+
+        cur_cost += (cur_pos - final_abs_pos) * (slope + width); // The additional cost for the other cells encountered
+
+        if(std::numeric_limits<T>::is_integer){
+            assert(final_abs_pos >= begin);
+            assert(final_abs_pos <= end - current_width() - width);
+        }
 
         if(update){
             prev_width.push_back(width + current_width());
@@ -110,8 +118,11 @@ class OSRP_leg{
         std::vector<result_t> ret(cells.size());
         for(index_t i=0; i<cells.size(); ++i){
             ret[i] = result_t(cells[i], final_abs_pos[i] + prev_width[i]);
-            //assert(final_abs_pos[i] >= begin);
-            //assert(final_abs_pos[i] + prev_width[i+1] <= end);
+
+            if(std::numeric_limits<T>::is_integer){
+                assert(final_abs_pos[i] >= begin);
+                assert(final_abs_pos[i] + prev_width[i+1] <= end);
+            }
         }
         return ret;
     }

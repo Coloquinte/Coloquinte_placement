@@ -597,7 +597,7 @@ std::vector<region_distribution::movable_cell> region_distribution::export_sprea
             x_leg.push(C);
         auto x_pl = x_leg.get_placement();
         for(index_t i=0; i<n; ++i){
-            weighted_pos[x_pl[i].first].x_ += x_pl[i].second * static_cast<float_t>(x_cells[i].width * total_capacity / (surface.x_max_ - surface.x_min_));
+            weighted_pos[x_pl[i].first].x_ += (x_pl[i].second + 0.5 * x_cells[i].width) * static_cast<float_t>(x_cells[i].width * total_capacity / (surface.x_max_ - surface.x_min_));
         }
 
         std::sort(y_cells.begin(), y_cells.end());
@@ -607,7 +607,7 @@ std::vector<region_distribution::movable_cell> region_distribution::export_sprea
             y_leg.push(C);
         auto y_pl = y_leg.get_placement();
         for(index_t i=0; i<n; ++i){
-            weighted_pos[y_pl[i].first].y_ += y_pl[i].second * static_cast<float_t>(y_cells[i].width * total_capacity / (surface.y_max_ - surface.y_min_));
+            weighted_pos[y_pl[i].first].y_ += (y_pl[i].second + 0.5 * y_cells[i].width) * static_cast<float_t>(y_cells[i].width * total_capacity / (surface.y_max_ - surface.y_min_));
         }
 
     }
