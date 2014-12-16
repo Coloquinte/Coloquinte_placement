@@ -136,14 +136,16 @@ std::vector<cell_leg_properties> simple_legalize(
         // Try every possible row from the best one, until we can't improve the cost
         for(index_t row_dist = 0;
             (central_row + row_dist < nbr_rows or central_row >= row_dist)
-            and (not found_location or static_cast<int_t>(row_dist) * row_height < best_cost);
+            and (not found_location or (int_t) row_dist * row_height * C.width < (int_t) row_height + best_cost);
             ++row_dist
         ){
             if(central_row + row_dist < nbr_rows - C.nbr_rows){
-                check_row_cost(central_row + row_dist, C, row_dist * row_height);
+                int_t add_cost = C.width * std::abs(static_cast<int_t>(central_row + row_dist) * static_cast<int_t>(row_height) + y_orig - C.y_pos);
+                check_row_cost(central_row + row_dist, C, add_cost);
             }
             if(central_row >= row_dist){
-                check_row_cost(central_row - row_dist, C, row_dist * row_height);
+                int_t add_cost = C.width * std::abs(static_cast<int_t>(central_row - row_dist) * static_cast<int_t>(row_height) + y_orig - C.y_pos);
+                check_row_cost(central_row - row_dist, C, add_cost);
             }
         }
 
@@ -281,14 +283,16 @@ std::vector<cell_leg_properties> good_legalize(
         // Try every possible row from the best one, until we can't improve the cost
         for(index_t row_dist = 0;
             (central_row + row_dist < nbr_rows or central_row >= row_dist)
-            and (not found_location or static_cast<int_t>(row_dist) * row_height * C.width < best_cost);
+            and (not found_location or (int_t) row_dist * row_height * C.width < (int_t) row_height + best_cost);
             ++row_dist
         ){
             if(central_row + row_dist < nbr_rows - C.nbr_rows){
-                check_row_cost(central_row + row_dist, C, row_dist * row_height * C.width);
+                int_t add_cost = C.width * std::abs(static_cast<int_t>(central_row + row_dist) * static_cast<int_t>(row_height) + y_orig - C.y_pos);
+                check_row_cost(central_row + row_dist, C, add_cost);
             }
             if(central_row >= row_dist){
-                check_row_cost(central_row - row_dist, C, row_dist * row_height * C.width);
+                int_t add_cost = C.width * std::abs(static_cast<int_t>(central_row - row_dist) * static_cast<int_t>(row_height) + y_orig - C.y_pos);
+                check_row_cost(central_row - row_dist, C, add_cost);
             }
         }
 

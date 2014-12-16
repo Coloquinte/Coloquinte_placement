@@ -4,6 +4,7 @@
 
 #include "common.hxx"
 
+#include <cassert>
 #include <queue>
 #include <limits>
 
@@ -54,10 +55,10 @@ class OSRP_leg{
             ((slope < 0 and bounds.top().absolute_pos > target_abs_pos) // Not reached equilibrium
             or bounds.top().absolute_pos > end - current_width() - width) // Still not a legal position
             ){
-            slope += bounds.top().weight;
             T old_pos = cur_pos;
             cur_pos = bounds.top().absolute_pos;
             cur_cost += (old_pos - cur_pos) * (slope + width); // The additional cost for the other cells encountered
+            slope += bounds.top().weight;
 
             // Remember which bounds we encountered in order to reset the object to its initial state
             if(not update)
