@@ -64,9 +64,9 @@ class netlist{
     void selfcheck() const;
 
     struct pin_t{
-        point<int_t> offset;
+        point<float_t> offset;
         index_t cell_ind, net_ind;
-        pin_t(point<int_t> offs, index_t c, index_t n) : offset(offs), cell_ind(c), net_ind(n){}
+        pin_t(point<float_t> offs, index_t c, index_t n) : offset(offs), cell_ind(c), net_ind(n){}
     };
 
     class net_pin_iterator{
