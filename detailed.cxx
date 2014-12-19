@@ -3,6 +3,7 @@
 
 #include <lemon/smart_graph.h>
 #include <lemon/cost_scaling.h>
+#include <lemon/capacity_scaling.h>
 #include <lemon/network_simplex.h>
 
 #include <cassert>
@@ -164,10 +165,7 @@ void optimize_positions(netlist const & circuit, detailed_placement & pl){
     }
 
     // Two nodes for position constraints
-    Node fixed_lft = g.addNode();
-    Node fixed_rgt = g.addNode();
-
-    auto fixed_arc = g.addArc(fixed_lft, fixed_rgt);
+    Node fixed = g.addNode();
 
     typedef std::pair<SmartDigraph::Arc, int_t> arc_pair;
     typedef std::pair<SmartDigraph::Node, int_t> node_pair;
@@ -189,13 +187,13 @@ void optimize_positions(netlist const & circuit, detailed_placement & pl){
             }
             else if((circuit.get_cell( c).attributes & XMovable) != 0){
                 // The cell c is movable and constrained on the right
-                auto A = g.addArc(fixed_rgt, cell_nodes[c]);
-                constraint_arcs.push_back(arc_pair(A, pl.positions_[oc] - pl.max_x_ - pl.widths_[c]));
+                auto A = g.addArc(fixed, cell_nodes[c]);
+                constraint_arcs.push_back(arc_pair(A, pl.positions_[oc] - pl.widths_[c]));
             }
             else if((circuit.get_cell(oc).attributes & XMovable) != 0){
                 // The cell oc is movable and constrained on the left
-                auto A = g.addArc(cell_nodes[oc], fixed_lft);
-                constraint_arcs.push_back(arc_pair(A, pl.min_x_ - pl.positions_[c] - pl.widths_[c]));
+                auto A = g.addArc(cell_nodes[oc], fixed);
+                constraint_arcs.push_back(arc_pair(A, - pl.positions_[c] - pl.widths_[c]));
             }
         }
     }
@@ -204,15 +202,15 @@ void optimize_positions(netlist const & circuit, detailed_placement & pl){
     for(index_t r=0; r<pl.row_cnt(); ++r){ // And the boundaries of each row
         index_t lc = pl.row_first_cells_[r];
         if(lc != null_ind and (circuit.get_cell(lc).attributes & XMovable) != 0){
-            auto Al = g.addArc(cell_nodes[lc], fixed_lft);
-            constraint_arcs.push_back(arc_pair(Al, 0));
+            auto Al = g.addArc(cell_nodes[lc], fixed);
+            constraint_arcs.push_back(arc_pair(Al, -pl.min_x_));
         }
     }
     for(index_t r=0; r<pl.row_cnt(); ++r){ // And the boundaries of each row
         index_t rc = pl.row_last_cells_[r];
         if(rc != null_ind and (circuit.get_cell(rc).attributes & XMovable) != 0){
-            auto Ar = g.addArc(fixed_rgt, cell_nodes[rc]);
-            constraint_arcs.push_back(arc_pair(Ar, -pl.widths_[rc]));
+            auto Ar = g.addArc(fixed, cell_nodes[rc]);
+            constraint_arcs.push_back(arc_pair(Ar, pl.max_x_ - pl.widths_[rc]));
         }
     }
     
@@ -230,10 +228,10 @@ void optimize_positions(netlist const & circuit, detailed_placement & pl){
                 constraint_arcs.push_back(arc_pair(Ar, -pin_offs));
             }
             else{ // Fixed offset
-                auto Al = g.addArc(fixed_rgt, Lnet_nodes[n]);
-                constraint_arcs.push_back(arc_pair(Al, pl.positions_[c] + pin_offs - pl.max_x_));
-                auto Ar = g.addArc(Unet_nodes[n], fixed_lft);
-                constraint_arcs.push_back(arc_pair(Ar, pl.min_x_ - pl.positions_[c] - pin_offs));
+                auto Al = g.addArc(fixed, Lnet_nodes[n]);
+                constraint_arcs.push_back(arc_pair(Al, pl.positions_[c] + pin_offs));
+                auto Ar = g.addArc(Unet_nodes[n], fixed);
+                constraint_arcs.push_back(arc_pair(Ar, - pl.positions_[c] - pin_offs));
             }
         }
     }
@@ -248,12 +246,12 @@ void optimize_positions(netlist const & circuit, detailed_placement & pl){
 
     // Create the maps to have cost and capacity for the arcs
     IntArcMap cost(g, 0);
+    IntArcMap capacity(g, circuit.net_cnt());
     IntNodeMap supply(g, 0);
 
     for(arc_pair A : constraint_arcs){
         cost[A.first] = A.second;
     }
-    cost[fixed_arc] = pl.max_x_ - pl.min_x_;
 
     for(node_pair N : net_supplies){
         supply[N.first] = N.second;
@@ -262,28 +260,29 @@ void optimize_positions(netlist const & circuit, detailed_placement & pl){
     // Then we (hope the solver can) solve it
     //NetworkSimplex<SmartDigraph> ns(g);
     CostScaling<SmartDigraph, int_t> ns(g);
-    ns.supplyMap(supply).costMap(cost);
+    //ns.supplyMap(supply).costMap(cost);
+    ns.supplyMap(supply).costMap(cost).upperMap(capacity);
     auto res = ns.run();
     std::cout << "Solved the dualMCF problem!" << std::endl;
     if(res == ns.OPTIMAL){
         std::cout << "It is OK!" << std::endl;
     }
     if(res == ns.INFEASIBLE){
-        std::cout << "It is unbounded" << std::endl;
+        std::cout << "It is unbounded (MCF infeasible)" << std::endl;
         abort();
     }
     if(res == ns.UNBOUNDED){
-        std::cout << "It is infeasible" << std::endl;
+        std::cout << "It is infeasible (MCF unbounded)" << std::endl;
         abort();
     }
     
-    // And we get the new positions as the dual values of the current solution (compared to the left/right fixed pins) 
+    // And we get the new positions as the dual values of the current solution (compared to the fixed pin) 
     for(index_t c=0; c<circuit.cell_cnt(); ++c){ // The cells
         if((circuit.get_cell(c).attributes & XMovable) != 0){
-            pl.positions_[c] = ns.potential(cell_nodes[c]);// - ns.potential(fixed_lft) + pl.min_x_;
+            pl.positions_[c] = ns.potential(cell_nodes[c]) - ns.potential(fixed);
         }
     }
-    //pl.selfcheck();
+    pl.selfcheck();
 }
 
 } // namespace dp
