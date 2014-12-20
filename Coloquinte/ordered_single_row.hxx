@@ -41,62 +41,7 @@ class OSRP_leg{
     std::priority_queue<OSRP_bound> bounds;
 
     // Get the cost of pushing a cell on the row
-    T get_displacement(legalizable_task<T> const newly_pushed, bool update){
-        T target_abs_pos = newly_pushed.target_pos - current_width();
-        T width = newly_pushed.width;
-        T slope = - width;
-
-        T cur_pos  = end;
-        T cur_cost = 0;
-
-        std::vector<OSRP_bound> passed_bounds;
-
-        while( not bounds.empty() and
-            ((slope < 0 and bounds.top().absolute_pos > target_abs_pos) // Not reached equilibrium
-            or bounds.top().absolute_pos > end - current_width() - width) // Still not a legal position
-            ){
-            T old_pos = cur_pos;
-            cur_pos = bounds.top().absolute_pos;
-            cur_cost += (old_pos - cur_pos) * (slope + width); // The additional cost for the other cells encountered
-            slope += bounds.top().weight;
-
-            // Remember which bounds we encountered in order to reset the object to its initial state
-            if(not update)
-                passed_bounds.push_back(bounds.top());
-            bounds.pop();
-        }
-
-        T final_abs_pos = std::min(end - current_width() - width, // Always before the end and after the beginning
-                                std::max(begin, slope >= 0 ? cur_pos : target_abs_pos) // but did we stop before reaching the target position? 
-                                    );
-
-        cur_cost += (cur_pos - final_abs_pos) * (slope + width); // The additional cost for the other cells encountered
-
-        if(std::numeric_limits<T>::is_integer){
-            assert(final_abs_pos >= begin);
-            assert(final_abs_pos <= end - current_width() - width);
-        }
-
-        if(update){
-            prev_width.push_back(width + current_width());
-            cells.push_back(newly_pushed.ind);
-            constraining_pos.push_back(final_abs_pos);
-            if(slope > 0){ // Remaining capacity of an encountered bound
-                bounds.push(OSRP_bound(slope, cur_pos));
-            }
-            // The new bound, minus what it absorbs of the remaining slope
-            if(target_abs_pos > begin){
-                bounds.push(OSRP_bound(2*width + std::min(slope, static_cast<T>(0) ), target_abs_pos));
-            }
-        }
-        else{
-            for(OSRP_bound b : passed_bounds){
-                bounds.push(b);
-            }
-        }
-
-        return cur_cost + width * std::abs(final_abs_pos - target_abs_pos); // Add the cost of the new cell
-    }
+    T get_displacement(legalizable_task<T> const newly_pushed, bool update);
 
     public:
     T current_width() const{ return prev_width.back(); }
@@ -111,25 +56,163 @@ class OSRP_leg{
     OSRP_leg(){}
 
     typedef std::pair<index_t, T> result_t;
+
     // Get the resulting placement
-    std::vector<result_t> get_placement() const{
-        auto final_abs_pos = constraining_pos;
-        std::partial_sum(final_abs_pos.rbegin(), final_abs_pos.rend(), final_abs_pos.rbegin(), [](T a, T b)->T{ return std::min(a,b); });
-
-        std::vector<result_t> ret(cells.size());
-        for(index_t i=0; i<cells.size(); ++i){
-            ret[i] = result_t(cells[i], final_abs_pos[i] + prev_width[i]);
-
-            if(std::numeric_limits<T>::is_integer){
-                assert(final_abs_pos[i] >= begin);
-                assert(final_abs_pos[i] + prev_width[i+1] <= end);
-            }
-        }
-        return ret;
-    }
-
+    std::vector<result_t> get_placement() const;
 };
 
+
+class full_single_row{
+    struct bound{
+        int_t abs_pos;
+        float_t slope_diff;
+
+        bool operator<(bound const o) const{ return abs_pos < o.abs_pos; }
+        bound(int_t p, float_t s) : abs_pos(p), slope_diff(s) {}
+    };
+
+    float_t cur_slope;
+    int_t lower, upper;
+
+    std::vector<int_t> prev_width;
+    std::vector<int_t> constraining_pos;
+    std::priority_queue<bound> bounds;
+
+    void update_positions();
+
+    public:
+
+    // Low-level functions to avoid internally building vectors
+    void push_cell(int_t width, int_t lower_lim, int_t upper_lim);  // Give the characteristics for a cell
+    void push_bound(int_t offset, float_t slope_diff);              // Push a bound for this cell
+    void push_slope(float_t right_slope);                           // Push additional slope
+
+    // Get the result
+    std::vector<int_t> get_placement() const;
+
+    full_single_row() : cur_slope(0.0), lower(std::numeric_limits<int_t>::min()), upper(0), prev_width(1, 0) {}
+};
+
+template<typename T>
+inline T OSRP_leg<T>::get_displacement(legalizable_task<T> const newly_pushed, bool update){
+    T target_abs_pos = newly_pushed.target_pos - current_width();
+    T width = newly_pushed.width;
+    T slope = - width;
+
+    T cur_pos  = end;
+    T cur_cost = 0;
+
+    std::vector<OSRP_bound> passed_bounds;
+
+    while( not bounds.empty() and
+        ((slope < 0 and bounds.top().absolute_pos > target_abs_pos) // Not reached equilibrium
+        or bounds.top().absolute_pos > end - current_width() - width) // Still not a legal position
+        ){
+        T old_pos = cur_pos;
+        cur_pos = bounds.top().absolute_pos;
+        cur_cost += (old_pos - cur_pos) * (slope + width); // The additional cost for the other cells encountered
+        slope += bounds.top().weight;
+
+        // Remember which bounds we encountered in order to reset the object to its initial state
+        if(not update)
+            passed_bounds.push_back(bounds.top());
+        bounds.pop();
+    }
+
+    T final_abs_pos = std::min(end - current_width() - width, // Always before the end and after the beginning
+                            std::max(begin, slope >= 0 ? cur_pos : target_abs_pos) // but did we stop before reaching the target position? 
+                                );
+
+    cur_cost += (cur_pos - final_abs_pos) * (slope + width); // The additional cost for the other cells encountered
+
+    if(std::numeric_limits<T>::is_integer){
+        assert(final_abs_pos >= begin);
+        assert(final_abs_pos <= end - current_width() - width);
+    }
+
+    if(update){
+        prev_width.push_back(width + current_width());
+        cells.push_back(newly_pushed.ind);
+        constraining_pos.push_back(final_abs_pos);
+        if(slope > 0){ // Remaining capacity of an encountered bound
+            bounds.push(OSRP_bound(slope, cur_pos));
+        }
+        // The new bound, minus what it absorbs of the remaining slope
+        if(target_abs_pos > begin){
+            bounds.push(OSRP_bound(2*width + std::min(slope, static_cast<T>(0) ), target_abs_pos));
+        }
+    }
+    else{
+        for(OSRP_bound b : passed_bounds){
+            bounds.push(b);
+        }
+    }
+
+    return cur_cost + width * std::abs(final_abs_pos - target_abs_pos); // Add the cost of the new cell
+}
+
+
+inline void full_single_row::update_positions(){
+    int_t cur_pos = upper;
+    // If we didn't push the position of the row
+    if(constraining_pos.size() + 1 < prev_width.size()){
+        while(not bounds.empty() and (cur_slope > 0.0 or bounds.top().abs_pos > upper)){
+            cur_slope -= bounds.top().slope_diff;
+            cur_pos = bounds.top().abs_pos;
+            bounds.pop();
+        }
+        int_t final_abs_pos = std::max(std::min(cur_pos, upper), lower);
+        constraining_pos.push_back(final_abs_pos);
+        if(cur_slope < 0.0){
+            bounds.push(bound(final_abs_pos, -cur_slope));
+        }
+    }
+}
+
+inline void full_single_row::push_cell(int_t width, int_t lower_lim, int_t upper_lim){
+    update_positions();
+
+    lower = std::max(lower, lower_lim - prev_width.back());
+    upper = upper_lim - prev_width.back();
+    cur_slope = 0.0;
+
+    prev_width.push_back(width + prev_width.back());
+}
+
+inline void full_single_row::push_slope(float_t right_slope){
+    cur_slope += right_slope;
+}
+
+inline void full_single_row::push_bound(int_t position, float_t slope_diff){
+    assert(constraining_pos.size() + 1 < prev_width.size());
+    bounds.push(bound(position - prev_width[prev_width.size()-2], slope_diff));
+}
+
+inline std::vector<int_t> full_single_row::get_placement() const{
+    std::vector<int_t> vals = constraining_pos;
+    std::partial_sum(vals.rbegin(), vals.rend(), vals.rbegin(), [](int_t a, int_t b)->int_t{ return std::min(a,b); });
+    for(index_t i=0; i<vals.size(); ++i){
+        vals[i] += prev_width[i];
+    }
+    return vals;
+}
+
+template<typename T>
+inline std::vector<std::pair<index_t, T> > OSRP_leg<T>::get_placement() const{
+    auto final_abs_pos = constraining_pos;
+    std::partial_sum(final_abs_pos.rbegin(), final_abs_pos.rend(), final_abs_pos.rbegin(), [](T a, T b)->T{ return std::min(a,b); });
+
+    std::vector<result_t> ret(cells.size());
+    for(index_t i=0; i<cells.size(); ++i){
+        ret[i] = result_t(cells[i], final_abs_pos[i] + prev_width[i]);
+
+        if(std::numeric_limits<T>::is_integer){
+            assert(final_abs_pos[i] >= begin);
+            assert(final_abs_pos[i] + prev_width[i+1] <= end);
+        }
+    }
+    return ret;
+}
 
 
 } // End namespace coloquinte
