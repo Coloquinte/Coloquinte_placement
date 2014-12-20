@@ -2,13 +2,9 @@
 #include "Coloquinte/detailed.hxx"
 
 #include <lemon/smart_graph.h>
-#include <lemon/cost_scaling.h>
-#include <lemon/capacity_scaling.h>
 #include <lemon/network_simplex.h>
 
 #include <cassert>
-
-#include <iostream>
 
 namespace coloquinte{
 namespace dp{
@@ -258,21 +254,10 @@ void optimize_positions(netlist const & circuit, detailed_placement & pl){
     }
 
     // Then we (hope the solver can) solve it
-    //NetworkSimplex<SmartDigraph> ns(g);
-    CostScaling<SmartDigraph, int_t> ns(g);
-    //ns.supplyMap(supply).costMap(cost);
-    ns.supplyMap(supply).costMap(cost).upperMap(capacity);
+    NetworkSimplex<SmartDigraph> ns(g);
+    ns.supplyMap(supply).costMap(cost);
     auto res = ns.run();
-    std::cout << "Solved the dualMCF problem!" << std::endl;
-    if(res == ns.OPTIMAL){
-        std::cout << "It is OK!" << std::endl;
-    }
-    if(res == ns.INFEASIBLE){
-        std::cout << "It is unbounded (MCF infeasible)" << std::endl;
-        abort();
-    }
-    if(res == ns.UNBOUNDED){
-        std::cout << "It is infeasible (MCF unbounded)" << std::endl;
+    if(res != ns.OPTIMAL){
         abort();
     }
     
