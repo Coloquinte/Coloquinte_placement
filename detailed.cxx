@@ -1,6 +1,9 @@
 
 #include "Coloquinte/detailed.hxx"
 
+#include <lemon/smart_graph.h>
+#include <lemon/network_simplex.h>
+
 #include <cassert>
 
 namespace coloquinte{
@@ -134,6 +137,137 @@ void detailed_placement::selfcheck() const{
             assert(cells_after_[cell_lims_[row_last_cells_[i]] + i - cell_rows_[row_last_cells_[i]]] == null_ind);
         }
     }
+}
+
+void optimize_positions(netlist const & circuit, detailed_placement & pl){
+    // Solves a minimum cost flow problem to optimize the placement at fixed topology
+    // Concretely, it means aligning the pins to minimize the wirelength
+    // It uses the Lemon network simplex solver from the Coin-OR initiative, which should scale well up to hundred of thousands of cells
+
+    using namespace lemon;
+    DIGRAPH_TYPEDEFS(SmartDigraph);
+    // Create a graph with the cells and bounds of the nets as node
+    SmartDigraph g;
+
+    std::vector<Node> cell_nodes(circuit.cell_cnt());
+    for(index_t i=0; i<circuit.cell_cnt(); ++i){
+        if((circuit.get_cell(i).attributes & XMovable) != 0)
+            cell_nodes[i] = g.addNode();
+    }
+    std::vector<Node> Lnet_nodes(circuit.net_cnt()), Unet_nodes(circuit.net_cnt());
+    for(index_t i=0; i<circuit.net_cnt(); ++i){
+        Lnet_nodes[i] = g.addNode();
+        Unet_nodes[i] = g.addNode();
+    }
+
+    // Two nodes for position constraints
+    Node fixed = g.addNode();
+
+    typedef std::pair<SmartDigraph::Arc, int_t> arc_pair;
+    typedef std::pair<SmartDigraph::Node, int_t> node_pair;
+    // The arcs corresponding to constraints of the original problem
+    std::vector<arc_pair> constraint_arcs;
+
+    // Now we add every positional constraint, which becomes an arc in the min-cost flow problem
+    for(index_t c=0; c<circuit.cell_cnt(); ++c){ // The cells
+        for(index_t l = pl.cell_lims_[c]; l < pl.cell_lims_[c+1]; ++l){
+            index_t oc = pl.cells_after_[l];
+            if(oc == null_ind) continue;
+
+            assert(pl.positions_[c] + pl.widths_[c] <= pl.positions_[oc]);
+            
+            if((circuit.get_cell(c).attributes & XMovable) != 0 and (circuit.get_cell(oc).attributes & XMovable) != 0){
+                // Two movable cells: OK
+                auto A = g.addArc(cell_nodes[oc], cell_nodes[c]);
+                constraint_arcs.push_back(arc_pair(A, -pl.widths_[c]));
+            }
+            else if((circuit.get_cell( c).attributes & XMovable) != 0){
+                // The cell c is movable and constrained on the right
+                auto A = g.addArc(fixed, cell_nodes[c]);
+                constraint_arcs.push_back(arc_pair(A, pl.positions_[oc] - pl.widths_[c]));
+            }
+            else if((circuit.get_cell(oc).attributes & XMovable) != 0){
+                // The cell oc is movable and constrained on the left
+                auto A = g.addArc(cell_nodes[oc], fixed);
+                constraint_arcs.push_back(arc_pair(A, - pl.positions_[c] - pl.widths_[c]));
+            }
+        }
+    }
+
+    
+    for(index_t r=0; r<pl.row_cnt(); ++r){ // And the boundaries of each row
+        index_t lc = pl.row_first_cells_[r];
+        if(lc != null_ind and (circuit.get_cell(lc).attributes & XMovable) != 0){
+            auto Al = g.addArc(cell_nodes[lc], fixed);
+            constraint_arcs.push_back(arc_pair(Al, -pl.min_x_));
+        }
+    }
+    for(index_t r=0; r<pl.row_cnt(); ++r){ // And the boundaries of each row
+        index_t rc = pl.row_last_cells_[r];
+        if(rc != null_ind and (circuit.get_cell(rc).attributes & XMovable) != 0){
+            auto Ar = g.addArc(fixed, cell_nodes[rc]);
+            constraint_arcs.push_back(arc_pair(Ar, pl.max_x_ - pl.widths_[rc]));
+        }
+    }
+    
+
+    // And every pin of every net: arcs too
+    for(index_t n=0; n<circuit.net_cnt(); ++n){
+        assert(circuit.get_net(n).pin_cnt > 0);
+        for(auto p : circuit.get_net(n)){
+            index_t c = p.cell_ind;
+            int_t pin_offs = 0.5 * pl.widths_[c] + (pl.x_orientations_[c] ? p.offset.x_ : - p.offset.x_); // Offset to the beginning of the cell
+            if((circuit.get_cell(c).attributes & XMovable) != 0){
+                Arc Al = g.addArc(cell_nodes[c], Lnet_nodes[n]);
+                constraint_arcs.push_back(arc_pair(Al, pin_offs));
+                Arc Ar = g.addArc(Unet_nodes[n], cell_nodes[c]);
+                constraint_arcs.push_back(arc_pair(Ar, -pin_offs));
+            }
+            else{ // Fixed offset
+                auto Al = g.addArc(fixed, Lnet_nodes[n]);
+                constraint_arcs.push_back(arc_pair(Al, pl.positions_[c] + pin_offs));
+                auto Ar = g.addArc(Unet_nodes[n], fixed);
+                constraint_arcs.push_back(arc_pair(Ar, - pl.positions_[c] - pin_offs));
+            }
+        }
+    }
+
+    // Then the only capacitated arcs: the ones for the nets
+    std::vector<node_pair> net_supplies;
+    for(index_t n=0; n<circuit.net_cnt(); ++n){
+        // TODO: use net weights
+        net_supplies.push_back(node_pair(Unet_nodes[n], 1));
+        net_supplies.push_back(node_pair(Lnet_nodes[n], -1));
+    }
+
+    // Create the maps to have cost and capacity for the arcs
+    IntArcMap cost(g, 0);
+    IntArcMap capacity(g, circuit.net_cnt());
+    IntNodeMap supply(g, 0);
+
+    for(arc_pair A : constraint_arcs){
+        cost[A.first] = A.second;
+    }
+
+    for(node_pair N : net_supplies){
+        supply[N.first] = N.second;
+    }
+
+    // Then we (hope the solver can) solve it
+    NetworkSimplex<SmartDigraph> ns(g);
+    ns.supplyMap(supply).costMap(cost);
+    auto res = ns.run();
+    if(res != ns.OPTIMAL){
+        abort();
+    }
+    
+    // And we get the new positions as the dual values of the current solution (compared to the fixed pin) 
+    for(index_t c=0; c<circuit.cell_cnt(); ++c){ // The cells
+        if((circuit.get_cell(c).attributes & XMovable) != 0){
+            pl.positions_[c] = ns.potential(cell_nodes[c]) - ns.potential(fixed);
+        }
+    }
+    pl.selfcheck();
 }
 
 } // namespace dp

@@ -34,6 +34,7 @@ struct detailed_placement{
     std::vector<int_t> widths_;
 
     std::vector<bool> x_orientations_, y_orientations_;
+
     // Tests the coherency between positions, widths and topological representation
     void selfcheck() const;
 
@@ -55,7 +56,8 @@ struct detailed_placement{
     index_t row_cnt()  const{ return row_first_cells_.size(); }
 };
 
-float_t get_HPWL_wirelength(netlist const & circuit, detailed_placement const & pl);
+void optimize_positions(netlist const & circuit, detailed_placement & pl);
+
 
 } // namespace dp
 } // namespace coloquinte
