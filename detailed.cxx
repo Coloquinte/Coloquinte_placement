@@ -10,12 +10,7 @@ namespace coloquinte{
 namespace dp{
 
 detailed_placement::detailed_placement(
-        std::vector<int_t>    positions,
-        std::vector<index_t>  row_positions,
-        std::vector<int_t>    widths,
-        std::vector<index_t>  heights,
-        std::vector<bool> x_orientations,
-        std::vector<bool> y_orientations,
+        std::vector<internal_cell> const cells,
         std::vector<std::vector<index_t> > const rows,
         int_t min_x, int_t max_x,
         int_t y_origin,
@@ -24,33 +19,20 @@ detailed_placement::detailed_placement(
     :
         min_x_(min_x), max_x_(max_x),
         y_origin_(y_origin),
-        row_height_(row_height),
-        positions_(positions),
-        cell_rows_(row_positions),
-        widths_(widths),
-        x_orientations_(x_orientations),
-        y_orientations_(y_orientations)
+        cells_(cells)
     {
-
-    index_t sz = positions.size();
 
     assert(row_height > 0);
     assert(min_x < max_x);
-    assert(row_positions.size() == sz
-        and widths.size()  == positions.size()
-        and heights.size() == positions.size()
-    );
     assert(rows.size() == nbr_rows);
 
-    cell_lims_.resize(1, 0);
     index_t nbr_lims = 0; 
-    for(index_t h : heights){
-        nbr_lims += h;
-        cell_lims_.push_back(nbr_lims);
+    for(internal_cell & c : cells_){
+        c.neighbours_begin = nbr_lims;
+        nbr_lims += c.height;
     }
 
-    cells_before_ .resize(nbr_lims, null_ind);
-    cells_after_  .resize(nbr_lims, null_ind);
+    neighbours_ .resize(nbr_lims, std::pair<index_t, index_t>(null_ind, null_ind) );
 
     row_first_cells_ .resize(nbr_rows, null_ind);
     row_last_cells_  .resize(nbr_rows, null_ind);
@@ -65,24 +47,20 @@ detailed_placement::detailed_placement(
         }
 
         for(index_t c : rows[r]){
-            // The row_positions are correct
-            assert( r >= cell_rows_[c] and r < cell_rows_[c] + cell_hght(c));
-
             // Has this row of the cell already been visited?
-            assert(not explored[cell_lims_[c] + r - cell_rows_[c]]);
-            explored[cell_lims_[c] + r - cell_rows_[c]] = true;
+            assert(not explored[neighbour_index(c, r)]);
+            explored[neighbour_index(c, r)] = true;
         }
 
         for(index_t i=0; i+1<rows[r].size(); ++i){
             index_t c1 = rows[r][i], c2 = rows[r][i+1];
-            assert(c1 < 1000000 && c2 < 1000000);
 
             // Save in the internal format
-            cells_after_ [cell_lims_[c1] + r - cell_rows_[c1]] = c2;
-            cells_before_[cell_lims_[c2] + r - cell_rows_[c2]] = c1;
+            neighbours_[neighbour_index(c1, r)].second = c2;
+            neighbours_[neighbour_index(c2, r)].first  = c1;
 
             // The positions are correct
-            assert( positions[c1] + widths[c1] <= positions[c2] );
+            assert(cells_[c1].position.x_ + cells_[c1].width <= cells_[c2].position.x_ );
         }
     }
 
@@ -95,46 +73,35 @@ detailed_placement::detailed_placement(
 }
 
 void detailed_placement::selfcheck() const{
-    assert(cells_before_.size()   == cells_after_.size());
-    assert( cell_rows_.size()     == cell_cnt()
-        and widths_.size()        == cell_cnt()
-        and positions_.size()     == cell_cnt()
-        and x_orientations_.size() == cell_cnt()
-        and y_orientations_.size() == cell_cnt()
-    );
     assert(row_first_cells_.size() == row_last_cells_.size());
 
     for(index_t i=0; i<cell_cnt(); ++i){
-        for(index_t l=cell_lims_[i]; l<cell_lims_[i+1]; ++l){
-            // Correct x position
-            assert(positions_[i] >= min_x_ and positions_[i] + widths_[i] <= max_x_);
-            assert(cell_rows_[i] + cell_hght(i) <= row_cnt());
+        internal_cell const c = cells_[i];
+        for(index_t l=c.neighbours_begin; l<c.neighbours_begin + c.height; ++l){
+            // not verified now since we don't modify the position for the obstacles
+            // : assert(c.position.x_ >= min_x_ and c.position.x_ + c.width <= max_x_);
 
-            if(cells_before_[l] != null_ind){
+            assert(c.row + c.height <= row_cnt());
+
+            if(neighbours_[l].first != null_ind){
+                auto const oc = cells_[neighbours_[l].first];
                 // Correct neighbour position
-                assert(positions_[i] >= positions_[cells_before_[l]] + widths_[cells_before_[l]]);
+                assert(c.position.x_ >= oc.position.x_ + oc.width);
             }
             else{
                 // Beginning of a row
-                assert(row_first_cells_[cell_rows_[i] + l - cell_lims_[i]] == i);
+                //assert(row_first_cells_[c.row + l - c.neighbours_begin] == i);
+                assert(row_first_cells_[c.row + l - c.neighbours_begin] == i);
             }
-            if(cells_after_[l] != null_ind){
+            if(neighbours_[l].second != null_ind){
+                auto const oc = cells_[neighbours_[l].second];
                 // Correct neighbour position
-                assert(positions_[i] + widths_[i] <= positions_[cells_after_[l]]);
+                assert(c.position.x_ + c.width <= oc.position.x_);
             }
             else{
                 // End of a row
-                assert(row_last_cells_[cell_rows_[i] + l - cell_lims_[i]] == i);
+                assert(row_last_cells_[c.row + l - c.neighbours_begin] == i);
             }
-        }
-    }
-    
-    for(index_t i=0; i<row_cnt(); ++i){
-        if(row_first_cells_[i] != null_ind){
-            assert(cells_before_[cell_lims_[row_first_cells_[i]] + i - cell_rows_[row_first_cells_[i]]] == null_ind);
-        }
-        if(row_last_cells_[i] != null_ind){
-            assert(cells_after_[cell_lims_[row_last_cells_[i]] + i - cell_rows_[row_last_cells_[i]]] == null_ind);
         }
     }
 }
@@ -169,27 +136,28 @@ void optimize_positions(netlist const & circuit, detailed_placement & pl){
     std::vector<arc_pair> constraint_arcs;
 
     // Now we add every positional constraint, which becomes an arc in the min-cost flow problem
-    for(index_t c=0; c<circuit.cell_cnt(); ++c){ // The cells
-        for(index_t l = pl.cell_lims_[c]; l < pl.cell_lims_[c+1]; ++l){
-            index_t oc = pl.cells_after_[l];
-            if(oc == null_ind) continue;
-
-            assert(pl.positions_[c] + pl.widths_[c] <= pl.positions_[oc]);
+    for(index_t i=0; i<circuit.cell_cnt(); ++i){ // The cells
+        auto c = pl.cells_[i];
+        for(index_t l = c.neighbours_begin; l < c.neighbours_begin + c.height; ++l){
+            index_t oi = pl.neighbours_[l].second;
+            if(oi == null_ind) continue;
+            auto oc = pl.cells_[oi];
+            assert(c.position.x_ + c.width <= oc.position.x_);
             
-            if((circuit.get_cell(c).attributes & XMovable) != 0 and (circuit.get_cell(oc).attributes & XMovable) != 0){
+            if((circuit.get_cell(i).attributes & XMovable) != 0 and (circuit.get_cell(oi).attributes & XMovable) != 0){
                 // Two movable cells: OK
-                auto A = g.addArc(cell_nodes[oc], cell_nodes[c]);
-                constraint_arcs.push_back(arc_pair(A, -pl.widths_[c]));
+                auto A = g.addArc(cell_nodes[oi], cell_nodes[i]);
+                constraint_arcs.push_back(arc_pair(A, -c.width));
             }
-            else if((circuit.get_cell( c).attributes & XMovable) != 0){
+            else if((circuit.get_cell( i).attributes & XMovable) != 0){
                 // The cell c is movable and constrained on the right
-                auto A = g.addArc(fixed, cell_nodes[c]);
-                constraint_arcs.push_back(arc_pair(A, pl.positions_[oc] - pl.widths_[c]));
+                auto A = g.addArc(fixed, cell_nodes[i]);
+                constraint_arcs.push_back(arc_pair(A, oc.position.x_ - c.width));
             }
-            else if((circuit.get_cell(oc).attributes & XMovable) != 0){
+            else if((circuit.get_cell(oi).attributes & XMovable) != 0){
                 // The cell oc is movable and constrained on the left
-                auto A = g.addArc(cell_nodes[oc], fixed);
-                constraint_arcs.push_back(arc_pair(A, - pl.positions_[c] - pl.widths_[c]));
+                auto A = g.addArc(cell_nodes[oi], fixed);
+                constraint_arcs.push_back(arc_pair(A, -c.position.x_ - c.width));
             }
         }
     }
@@ -206,7 +174,7 @@ void optimize_positions(netlist const & circuit, detailed_placement & pl){
         index_t rc = pl.row_last_cells_[r];
         if(rc != null_ind and (circuit.get_cell(rc).attributes & XMovable) != 0){
             auto Ar = g.addArc(fixed, cell_nodes[rc]);
-            constraint_arcs.push_back(arc_pair(Ar, pl.max_x_ - pl.widths_[rc]));
+            constraint_arcs.push_back(arc_pair(Ar, pl.max_x_ - pl.cells_[rc].width));
         }
     }
     
@@ -216,7 +184,7 @@ void optimize_positions(netlist const & circuit, detailed_placement & pl){
         assert(circuit.get_net(n).pin_cnt > 0);
         for(auto p : circuit.get_net(n)){
             index_t c = p.cell_ind;
-            int_t pin_offs = 0.5 * pl.widths_[c] + (pl.x_orientations_[c] ? p.offset.x_ : - p.offset.x_); // Offset to the beginning of the cell
+            int_t pin_offs = 0.5 * pl.cells_[c].width + (pl.cells_[c].x_orientation ? p.offset.x_ : - p.offset.x_); // Offset to the beginning of the cell
             if((circuit.get_cell(c).attributes & XMovable) != 0){
                 Arc Al = g.addArc(cell_nodes[c], Lnet_nodes[n]);
                 constraint_arcs.push_back(arc_pair(Al, pin_offs));
@@ -225,9 +193,9 @@ void optimize_positions(netlist const & circuit, detailed_placement & pl){
             }
             else{ // Fixed offset
                 auto Al = g.addArc(fixed, Lnet_nodes[n]);
-                constraint_arcs.push_back(arc_pair(Al, pl.positions_[c] + pin_offs));
+                constraint_arcs.push_back(arc_pair(Al, pl.cells_[c].position.x_ + pin_offs));
                 auto Ar = g.addArc(Unet_nodes[n], fixed);
-                constraint_arcs.push_back(arc_pair(Ar, - pl.positions_[c] - pin_offs));
+                constraint_arcs.push_back(arc_pair(Ar, - pl.cells_[c].position.x_ - pin_offs));
             }
         }
     }
@@ -264,7 +232,7 @@ void optimize_positions(netlist const & circuit, detailed_placement & pl){
     // And we get the new positions as the dual values of the current solution (compared to the fixed pin) 
     for(index_t c=0; c<circuit.cell_cnt(); ++c){ // The cells
         if((circuit.get_cell(c).attributes & XMovable) != 0){
-            pl.positions_[c] = ns.potential(cell_nodes[c]) - ns.potential(fixed);
+            pl.cells_[c].position.x_ = ns.potential(cell_nodes[c]) - ns.potential(fixed);
         }
     }
     pl.selfcheck();
