@@ -12,14 +12,14 @@ namespace dp{
 void get_result(netlist const & circuit, detailed_placement const & dpl, gp::placement_t & gpl){
     for(index_t c=0; c<circuit.cell_cnt(); ++c){
         if( (circuit.get_cell(c).attributes & XMovable) != 0)
-            gpl.positions_[c].x_ = static_cast<float_t>(dpl.positions_[c]) + 0.5 * circuit.get_cell(c).size.x_;
+            gpl.positions_[c].x_ = static_cast<float_t>(dpl.cells_[c].position.x_) + 0.5 * circuit.get_cell(c).size.x_;
         if( (circuit.get_cell(c).attributes & YMovable) != 0)
-            gpl.positions_[c].y_ = static_cast<float_t>(dpl.y_origin_) + dpl.cell_rows_[c] * dpl.row_height_ + 0.5 * circuit.get_cell(c).size.y_;
+            gpl.positions_[c].y_ = static_cast<float_t>(dpl.cells_[c].position.y_) + 0.5 * circuit.get_cell(c).size.y_;
 
         if( (circuit.get_cell(c).attributes & XFlippable) != 0)
-            gpl.orientations_[c].x_ = dpl.x_orientations_[c] ? 1.0 : -1.0;
+            gpl.orientations_[c].x_ = dpl.cells_[c].x_orientation ? 1.0 : -1.0;
         if( (circuit.get_cell(c).attributes & YFlippable) != 0)
-            gpl.orientations_[c].y_ = dpl.y_orientations_[c] ? 1.0 : -1.0;
+            gpl.orientations_[c].y_ = dpl.cells_[c].y_orientation ? 1.0 : -1.0;
     }
 }
 
@@ -362,10 +362,7 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
     std::vector<std::vector<fixed_cell_interval> > row_occupation(nbr_rows);
     std::vector<cell_to_leg> cells;
 
-    std::vector<index_t> row_index(circuit.cell_cnt());
-    std::vector<int_t>   cell_pos(circuit.cell_cnt());
-    std::vector<int_t>   cell_width(circuit.cell_cnt());
-    std::vector<index_t> cell_height(circuit.cell_cnt());
+    std::vector<detailed_placement::internal_cell> detailed_cells(circuit.cell_cnt());
 
     for(index_t i=0; i<circuit.cell_cnt(); ++i){
         auto cur = circuit.get_cell(i);
@@ -375,8 +372,8 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
             point<int_t> target_pos = pl.positions_[i] - static_cast<float_t>(0.5) * static_cast<point<float_t> >(cur.size);
             index_t cur_cell_rows = (cur.size.y_ + row_height -1) / row_height;
             cells.push_back(cell_to_leg(target_pos.x_, target_pos.y_, i, cur.size.x_, cur_cell_rows));
-            cell_height[i] = cur_cell_rows;
-            cell_width[i] = cur.size.x_;
+            detailed_cells[i].height = cur_cell_rows;
+            detailed_cells[i].width = cur.size.x_;
         }
         else{
             // In each row, we put the index of the fixed cell and the range that is already occupied
@@ -385,24 +382,31 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
                   low_y_pos  = std::round(pl.positions_[i].y_ - 0.5 * static_cast<float_t>(cur.size.y_)),
                   hgh_y_pos  = std::round(pl.positions_[i].y_ + 0.5 * static_cast<float_t>(cur.size.y_));
 
-            assert(low_x_pos < hgh_x_pos and low_y_pos < hgh_y_pos);
-            if(hgh_y_pos <= surface.y_min_ or low_y_pos >= surface.y_max_ or hgh_x_pos <= surface.x_min_ or low_x_pos >= surface.x_max_) continue; // No intersection
+            detailed_cells[i].position.x_ = low_x_pos;
+            detailed_cells[i].position.y_ = low_y_pos;
+            if(hgh_y_pos <= surface.y_min_ or low_y_pos >= surface.y_max_ or hgh_x_pos <= surface.x_min_ or low_x_pos >= surface.x_max_){
+                detailed_cells[i].row = null_ind;
+                detailed_cells[i].width = hgh_x_pos - low_x_pos;
+                detailed_cells[i].height = 0;
+            }
+            else{
+                assert(low_x_pos < hgh_x_pos and low_y_pos < hgh_y_pos);
 
-            hgh_x_pos = std::min(surface.x_max_, hgh_x_pos);
-            hgh_y_pos = std::min(surface.y_max_, hgh_y_pos);
-            low_x_pos = std::max(surface.x_min_, low_x_pos);
-            low_y_pos = std::max(surface.y_min_, low_y_pos);
+                int_t rnd_hgh_x_pos = std::min(surface.x_max_, hgh_x_pos);
+                int_t rnd_hgh_y_pos = std::min(surface.y_max_, hgh_y_pos);
+                int_t rnd_low_x_pos = std::max(surface.x_min_, low_x_pos);
+                int_t rnd_low_y_pos = std::max(surface.y_min_, low_y_pos);
 
-            index_t first_row = (low_y_pos - surface.y_min_) / row_height;
-            index_t last_row = (index_t) (hgh_y_pos - surface.y_min_ + row_height - 1) / row_height; // Exclusive: if the cell spans the next row, i.e. pos % row_height >= 0, include it too
-            assert(last_row <= nbr_rows);
+                index_t first_row = (rnd_low_y_pos - surface.y_min_) / row_height;
+                index_t last_row = (index_t) (rnd_hgh_y_pos - surface.y_min_ + row_height - 1) / row_height; // Exclusive: if the cell spans the next row, i.e. pos % row_height >= 0, include it too
+                assert(last_row <= nbr_rows);
 
-            row_index[i] = first_row;
-            cell_pos[i] = low_x_pos;
-            cell_height[i] = last_row - first_row;
-            cell_width[i] = hgh_x_pos - low_x_pos; // Only the part within the placement region
-            for(index_t r=first_row; r<last_row; ++r){
-                row_occupation[r].push_back(fixed_cell_interval(low_x_pos, hgh_x_pos, i));
+                detailed_cells[i].row = first_row;
+                detailed_cells[i].width = hgh_x_pos - low_x_pos;
+                 detailed_cells[i].height = last_row - first_row;
+                 for(index_t r=first_row; r<last_row; ++r){
+                     row_occupation[r].push_back(fixed_cell_interval(rnd_low_x_pos, rnd_hgh_x_pos, i));
+                 }
             }
         }
     }
@@ -424,24 +428,19 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
     );
 
     for(cell_leg_properties C : final_cells){
-        cell_pos[C.ind] = C.x_pos;
-        row_index[C.ind] = C.row_pos;
+        detailed_cells[C.ind].position.x_ = C.x_pos;
+        detailed_cells[C.ind].position.y_ = static_cast<int_t>(C.row_pos) * row_height + surface.y_min_;
+        detailed_cells[C.ind].row = C.row_pos;
     }
 
     // Get the orientations
-    std::vector<bool> x_orientation(circuit.cell_cnt()), y_orientation(circuit.cell_cnt());
     for(index_t c=0; c<circuit.cell_cnt(); ++c){
-        x_orientation[c] = pl.orientations_[c].x_ >= 0.0;
-        y_orientation[c] = pl.orientations_[c].y_ >= 0.0;
+        detailed_cells[c].x_orientation = pl.orientations_[c].x_ >= 0.0;
+        detailed_cells[c].y_orientation = pl.orientations_[c].y_ >= 0.0;
     }
 
     return detailed_placement(
-        cell_pos,
-        row_index,
-        cell_width,
-        cell_height,
-        x_orientation,
-        y_orientation,
+        detailed_cells,
         cells_by_rows,
         surface.x_min_, surface.x_max_,
         surface.y_min_,
