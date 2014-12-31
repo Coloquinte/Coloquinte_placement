@@ -121,7 +121,7 @@ class netlist{
             attributes(orig.cell_attributes_[ind]),
             N(orig),
             index(ind),
-            pin_cnt(N.cell_limits_[index+1] - N.cell_limits_[index])
+            pin_cnt(N.cell_limits_[ind+1] - N.cell_limits_[ind])
             {}
 
         cell_pin_iterator begin(){ return cell_pin_iterator(index, N.cell_limits_[index], N); }
@@ -138,7 +138,7 @@ class netlist{
             weight(orig.net_weights_[ind]),
             N(orig),
             index(ind),
-            pin_cnt(N.net_limits_[index+1] - N.net_limits_[index])
+            pin_cnt(N.net_limits_[ind+1] - N.net_limits_[ind])
             {}
 
         net_pin_iterator begin(){ return net_pin_iterator(index, N.net_limits_[index], N); }
@@ -213,7 +213,7 @@ inline netlist::netlist(std::vector<temporary_cell> cells, std::vector<temporary
     net_limits_.back() = pins.size();
 
 
-    std::sort(pins.begin(), pins.end(), [](temporary_pin const a, temporary_pin const b){ return a.cell_ind < b.cell_ind; });   
+    std::sort(pins.begin(), pins.end(), [](temporary_pin const a, temporary_pin const b){ return a.cell_ind < b.cell_ind; });
     for(index_t c=0, p=0; c<cells.size(); ++c){
         cell_areas_[c] = cells[c].area;
         cell_attributes_[c] = cells[c].attributes;

@@ -88,9 +88,9 @@ class full_single_row{
     void push_slope(float_t right_slope);                           // Push additional slope
 
     // Get the result
-    std::vector<int_t> get_placement() const;
+    std::vector<int_t> get_placement();
 
-    full_single_row() : cur_slope(0.0), lower(std::numeric_limits<int_t>::min()), upper(0), prev_width(1, 0) {}
+    full_single_row() : cur_slope(0.0), lower(std::numeric_limits<int_t>::min()), upper(std::numeric_limits<int_t>::max()), prev_width(1, 0) {}
 };
 
 template<typename T>
@@ -173,10 +173,9 @@ inline void full_single_row::push_cell(int_t width, int_t lower_lim, int_t upper
     update_positions();
 
     lower = std::max(lower, lower_lim - prev_width.back());
+    prev_width.push_back(width + prev_width.back());
     upper = upper_lim - prev_width.back();
     cur_slope = 0.0;
-
-    prev_width.push_back(width + prev_width.back());
 }
 
 inline void full_single_row::push_slope(float_t right_slope){
@@ -188,9 +187,11 @@ inline void full_single_row::push_bound(int_t position, float_t slope_diff){
     bounds.push(bound(position - prev_width[prev_width.size()-2], slope_diff));
 }
 
-inline std::vector<int_t> full_single_row::get_placement() const{
-    std::vector<int_t> vals = constraining_pos;
-    std::partial_sum(vals.rbegin(), vals.rend(), vals.rbegin(), [](int_t a, int_t b)->int_t{ return std::min(a,b); });
+inline std::vector<int_t> full_single_row::get_placement(){
+    update_positions();
+
+    auto vals = std::vector<int_t>(constraining_pos.size());
+    std::partial_sum(constraining_pos.rbegin(), constraining_pos.rend(), vals.rbegin(), [](int_t a, int_t b)->int_t{ return std::min(a,b); });
     for(index_t i=0; i<vals.size(); ++i){
         vals[i] += prev_width[i];
     }
