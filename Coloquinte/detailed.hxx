@@ -61,6 +61,7 @@ struct detailed_placement{
 
 void optimize_positions(netlist const & circuit, detailed_placement & pl);
 void optimize_swaps(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent);
+void swap_in_rows(netlist const & circuit, detailed_placement & pl, index_t range);
 void optimize_single_rows(netlist const & circuit, detailed_placement & pl);
 
 } // namespace dp

@@ -407,6 +407,141 @@ inline index_t get_next_cell_on_row(detailed_placement const & pl, index_t c){
     return ret;
 }
 
+// Optimizes an ordered sequence of standard cells on the same row, returns the cost and the correspon
+inline float_t optimize_convex_sequence(netlist const & circuit, detailed_placement const & pl, std::vector<index_t> const & cells, std::vector<int_t> & positions, int_t lower_lim, int_t upper_lim){
+
+    struct order_gettr{
+        index_t cell_ind, seq_order;
+        bool operator<(order_gettr const o) const{ return cell_ind < o.cell_ind; }
+        bool operator<(index_t const o) const{ return cell_ind < o; }
+        order_gettr(index_t c, index_t i) : cell_ind(c), seq_order(i) {}
+    };
+
+    std::vector<order_gettr> cells_in_row;
+    for(index_t i=0; i<cells.size(); ++i){
+        cells_in_row.push_back(order_gettr(cells[i],i));
+    }
+    std::sort(cells_in_row.begin(), cells_in_row.end());
+
+    full_single_row OSRP;
+    float_t const INF = std::numeric_limits<float_t>::infinity();
+
+
+    for(index_t i=0; i<cells.size(); ++i){
+        index_t cur_cell_ind = cells[i];
+        auto cur_cell = pl.cells_[cur_cell_ind];
+
+        assert(circuit.get_cell(cur_cell_ind).size.x_ == cur_cell.width);
+
+        OSRP.push_cell(cur_cell.width, lower_lim, upper_lim);
+
+        std::vector<index_t> involved_nets;
+        // Take the nets used by the cell
+        for(netlist::pin_t p : circuit.get_cell(cur_cell_ind)){
+            involved_nets.push_back(p.net_ind);
+        }
+        // Uniquify the nets
+        std::sort(involved_nets.begin(), involved_nets.end());
+        involved_nets.resize(std::distance(involved_nets.begin(), std::unique(involved_nets.begin(), involved_nets.end())));
+
+        // Take the unique nets and add their extreme pins
+        for(index_t n : involved_nets){
+            float_t net_weight = circuit.get_net(n).weight;
+
+            float_t ext_pin_min = INF, ext_pin_max = -INF;
+            float_t rel_loc_pin_min = INF, rel_loc_pin_max = -INF;
+
+            bool found_before=false, found_after=false, found_external=false;
+
+            for(netlist::pin_t p : circuit.get_net(n)){
+                auto it = std::lower_bound(cells_in_row.begin(), cells_in_row.end(), p.cell_ind);
+                if(it != cells_in_row.end() and it->cell_ind == p.cell_ind){
+                    // Found a pin on the row
+                    if(it->seq_order < i) found_before = true;
+                    else if(it->seq_order > i) found_after  = true;
+                    else{
+                        assert(cur_cell_ind == p.cell_ind);
+                        rel_loc_pin_min = std::min(p.offset.x_, rel_loc_pin_min);
+                        rel_loc_pin_max = std::max(p.offset.x_, rel_loc_pin_max);
+                    }
+                }
+                else{ // Found a pin which remains fixed for this round
+                    found_external = true;
+
+                    auto loc_c = pl.cells_[p.cell_ind];
+                    float_t pos = loc_c.position.x_ + 0.5f * loc_c.width + (loc_c.x_orientation ? p.offset.x_ : - p.offset.x_);
+                    ext_pin_min = std::min(pos, ext_pin_min);
+                    ext_pin_max = std::max(pos, ext_pin_max);
+                }
+            }
+
+            // Set the local positions relative to the beginning of the cell
+            float_t loc_pin_min = 0.5f * cur_cell.width + (cur_cell.x_orientation ? rel_loc_pin_min : -rel_loc_pin_max);
+            float_t loc_pin_max = 0.5f * cur_cell.width + (cur_cell.x_orientation ? rel_loc_pin_max : -rel_loc_pin_min);
+
+            // Now we have two bounds for the net if it has pins that are not on the row
+            if(not found_before){ // First cell in the row with this net
+                if(found_external){
+                    assert(ext_pin_min > -INF);
+                    float_t bound_pos = ext_pin_min - loc_pin_min;
+                    assert(std::floor(bound_pos) == bound_pos);
+                    OSRP.push_bound(static_cast<int_t>(std::floor(bound_pos)), net_weight);
+                }
+                else if(found_after){ // Multiple cells on this row and none outside: driven to the right
+                    OSRP.push_slope(-net_weight);
+                }
+            }
+            if(not found_after){ // Last  cell in the row with this net
+                if(found_external){
+                    assert(ext_pin_max < INF);
+                    OSRP.push_slope(net_weight);
+                    float_t bound_pos = ext_pin_max - loc_pin_max;
+                    assert(std::floor(bound_pos) == bound_pos);
+                    OSRP.push_bound(static_cast<int_t>(std::ceil(bound_pos)), net_weight); 
+                }
+                else if(found_before){ // Multiple cells on this row and none outside: driven to the left
+                    OSRP.push_slope(net_weight);
+                }
+            }
+        } // Iteration on the nets of the cell
+    } // Iteration on the group of cell to optimize
+    positions = OSRP.get_placement();
+
+    // Now get the x cost of the nets at this position
+    std::vector<index_t> involved_nets;
+    for(index_t c : cells){
+        for(netlist::pin_t p : circuit.get_cell(c)){
+            involved_nets.push_back(p.net_ind);
+        }
+    }
+    // Uniquify the nets
+    std::sort(involved_nets.begin(), involved_nets.end());
+    involved_nets.resize(std::distance(involved_nets.begin(), std::unique(involved_nets.begin(), involved_nets.end())));
+
+    float_t cost = 0.0;
+    for(index_t n : involved_nets){
+        float_t min_pos=INF, max_pos=-INF;
+        for(netlist::pin_t p : circuit.get_net(n)){
+            int_t cell_pos;
+            auto loc_c = pl.cells_[p.cell_ind];
+
+            auto it = std::lower_bound(cells_in_row.begin(), cells_in_row.end(), p.cell_ind);
+            if(it != cells_in_row.end() and it->cell_ind == p.cell_ind){
+                // Found a pin on the row
+                cell_pos = positions[it->seq_order];
+            }
+            else{
+                cell_pos = loc_c.position.x_;
+            }
+            float_t pin_pos = cell_pos + 0.5f * loc_c.width + (loc_c.x_orientation ? p.offset.x_ : - p.offset.x_);
+            min_pos = std::min(min_pos, pin_pos);
+            max_pos = std::max(max_pos, pin_pos);
+        }
+        cost += (max_pos - min_pos);
+    }
+    return cost;
+}
+
 } // End anonymous namespace
 
 
@@ -452,120 +587,120 @@ void optimize_single_rows(netlist const & circuit, detailed_placement & pl){
         index_t OSRP_cell = get_first_cell_on_row(pl, r);
 
         while(OSRP_cell != null_ind){
-            std::vector<index_t> ordered_cells_in_row;
+            std::vector<index_t> cells;
 
             for(;
                 OSRP_cell != null_ind and pl.cells_[OSRP_cell].height == 1 and (circuit.get_cell(OSRP_cell).attributes & XMovable) != 0; // Movable standard cell
                 OSRP_cell = pl.neighbours_[pl.cells_[OSRP_cell].neighbours_begin].second
             ){
-                ordered_cells_in_row.push_back(OSRP_cell);
+                cells.push_back(OSRP_cell);
             }
 
-            std::map<index_t, index_t> cells_in_row;
-            for(index_t i=0; i<ordered_cells_in_row.size(); ++i){
-                index_t c = ordered_cells_in_row[i];
-                cells_in_row[c] = i;
-            }
+            if(not cells.empty()){
+                // Limits of the placement region for the cells taken
+                index_t before_row = pl.neighbours_[pl.cells_[cells.front()].neighbours_begin].first;
+                index_t lower_lim = before_row != null_ind ? pl.cells_[before_row].width + pl.cells_[before_row].position.x_ : pl.min_x_;
+                index_t after_row  = pl.neighbours_[pl.cells_[cells.back() ].neighbours_begin].second;
+                index_t upper_lim = after_row != null_ind ? pl.cells_[after_row].position.x_ : pl.max_x_;
+                std::vector<int_t> final_positions;
+                optimize_convex_sequence(circuit, pl, cells, final_positions, lower_lim, upper_lim);
 
-            full_single_row OSRP;
-
-            // Limits of the placement region for the cells taken
-            int_t lower_lim = std::numeric_limits<int_t>::min(), upper_lim = std::numeric_limits<int_t>::max();
-            if(not ordered_cells_in_row.empty()){
-                index_t before_row = pl.neighbours_[pl.cells_[ordered_cells_in_row.front()].neighbours_begin].first;
-                lower_lim = before_row != null_ind ? pl.cells_[before_row].width + pl.cells_[before_row].position.x_ : pl.min_x_;
-                index_t after_row  = pl.neighbours_[pl.cells_[ordered_cells_in_row.back() ].neighbours_begin].second;
-                upper_lim = after_row != null_ind ? pl.cells_[after_row].position.x_ : pl.max_x_;
-            }
-
-            for(index_t i=0; i<ordered_cells_in_row.size(); ++i){
-                index_t cur_cell_ind = ordered_cells_in_row[i];
-                auto cur_cell = pl.cells_[cur_cell_ind];
-
-                assert(circuit.get_cell(cur_cell_ind).size.x_ == cur_cell.width);
-
-                OSRP.push_cell(cur_cell.width, lower_lim, upper_lim);
-
-                std::vector<index_t> involved_nets;
-                // Take the nets used by the cell
-                for(netlist::pin_t p : circuit.get_cell(cur_cell_ind)){
-                    involved_nets.push_back(p.net_ind);
+                // Update the positions
+                for(index_t i=0; i<cells.size(); ++i){
+                    pl.cells_[cells[i]].position.x_ = final_positions[i];
                 }
-                // Uniquify the nets
-                std::sort(involved_nets.begin(), involved_nets.end());
-                involved_nets.resize(std::distance(involved_nets.begin(), std::unique(involved_nets.begin(), involved_nets.end())));
-
-                // Take the unique nets and add their extreme pins
-                for(index_t n : involved_nets){
-                    float_t const INF = std::numeric_limits<float_t>::infinity();
-                    float_t net_weight = circuit.get_net(n).weight;
-
-                    float_t ext_pin_min = INF, ext_pin_max = -INF;
-                    float_t rel_loc_pin_min = INF, rel_loc_pin_max = -INF;
-
-                    bool found_before=false, found_after=false, found_external=false;
-
-                    for(netlist::pin_t p : circuit.get_net(n)){
-                        auto it = cells_in_row.find(p.cell_ind);
-                        assert(p.offset.x_ < INF and p.offset.x_ > -INF);
-                        if(it != cells_in_row.end()){
-                            // Found a pin on the row
-                            if(it->second < i) found_before = true;
-                            else if(it->second > i) found_after  = true;
-                            else{
-                                assert(cur_cell_ind == p.cell_ind);
-                                rel_loc_pin_min = std::min(p.offset.x_, rel_loc_pin_min);
-                                rel_loc_pin_max = std::max(p.offset.x_, rel_loc_pin_max);
-                            }
-                        }
-                        else{
-                            found_external = true;
-
-                            auto loc_c = pl.cells_[p.cell_ind];
-                            float_t pos = loc_c.position.x_ + 0.5f * loc_c.width + (loc_c.x_orientation ? p.offset.x_ : - p.offset.x_);
-                            ext_pin_min = std::min(pos, ext_pin_min);
-                            ext_pin_max = std::max(pos, ext_pin_max);
-                        }
-                    }
-
-                    // Set the local positions relative to the beginning of the cell
-                    float_t loc_pin_min = 0.5f * cur_cell.width + (cur_cell.x_orientation ? rel_loc_pin_min : -rel_loc_pin_max);
-                    float_t loc_pin_max = 0.5f * cur_cell.width + (cur_cell.x_orientation ? rel_loc_pin_max : -rel_loc_pin_min);
-
-                    // Now we have the bounds for the net, depending on the orientation of the cell
-                    if(not found_before){ // First cell in the row with this net
-                        if(found_external){
-                            assert(ext_pin_min > -INF);
-                            float_t bound_pos = ext_pin_min - loc_pin_min;
-                            assert(std::floor(bound_pos) == bound_pos);
-                            OSRP.push_bound(static_cast<int_t>(std::floor(bound_pos)), net_weight);
-                        }
-                        else if(found_after){ // Multi-pin net
-                            OSRP.push_slope(-net_weight);
-                        }
-                    }
-                    if(not found_after){ // Last  cell in the row with this net
-                        if(found_external){
-                            assert(ext_pin_max < INF);
-                            OSRP.push_slope(net_weight);
-                            float_t bound_pos = ext_pin_max - loc_pin_max;
-                            assert(std::floor(bound_pos) == bound_pos);
-                            OSRP.push_bound(static_cast<int_t>(std::ceil(bound_pos)), net_weight); 
-                        }
-                        else if(found_before){ // Multiple cells on the row for this net
-                            OSRP.push_slope(net_weight);
-                        }
-                    }
-                } // Iteration on the nets of the cell
-            } // Iteration on the group of cell to optimize
-
-            // Update the positions
-            std::vector<int_t> new_positions = OSRP.get_placement();
-            for(index_t i=0; i<ordered_cells_in_row.size(); ++i){
-                pl.cells_[ordered_cells_in_row[i]].position.x_ = new_positions[i];
             }
 
             if(OSRP_cell != null_ind) OSRP_cell = get_first_standard_cell(pl, r, OSRP_cell); // Go to the next group
+        } // Iteration on the entire row
+    } // Iteration on the rows
+
+    pl.selfcheck();
+}
+
+void swap_in_rows(netlist const & circuit, detailed_placement & pl, index_t range){
+    assert(range >= 2);
+
+    for(index_t r=0; r<pl.row_cnt(); ++r){
+        index_t OSRP_cell = get_first_cell_on_row(pl, r);
+
+        while(OSRP_cell != null_ind){
+            std::vector<index_t> cells;
+            for(index_t nbr_cells=0;
+                    OSRP_cell != null_ind
+                and pl.cells_[OSRP_cell].height == 1
+                and (circuit.get_cell(OSRP_cell).attributes & XMovable) != 0
+                and nbr_cells < range;
+                OSRP_cell = pl.neighbours_[pl.cells_[OSRP_cell].neighbours_begin].second, ++nbr_cells
+            ){
+                cells.push_back(OSRP_cell);
+            }
+
+            if(not cells.empty()){
+                // Limits of the placement region for the cells taken
+                index_t before_row = pl.neighbours_[pl.cells_[cells.front()].neighbours_begin].first;
+                index_t lower_lim = before_row != null_ind ? pl.cells_[before_row].width + pl.cells_[before_row].position.x_ : pl.min_x_;
+                index_t after_row  = pl.neighbours_[pl.cells_[cells.back() ].neighbours_begin].second;
+                index_t upper_lim = after_row != null_ind ? pl.cells_[after_row].position.x_ : pl.max_x_;
+
+                float_t best_cost = std::numeric_limits<float_t>::infinity();
+                std::vector<int_t> positions(cells.size());
+                std::vector<index_t> best_permutation = cells;
+                std::vector<int_t> best_positions(cells.size());;
+    
+                // Check every possible permutation of the cells
+                std::sort(cells.begin(), cells.end());
+                do{
+                    float_t cur_cost = optimize_convex_sequence(circuit, pl, cells, positions, lower_lim, upper_lim);
+                    if(cur_cost < best_cost){
+                        best_cost = cur_cost;
+                        best_permutation = cells;
+                        best_positions = positions;
+                    }
+                }while(std::next_permutation(cells.begin(), cells.end()));
+    
+                assert(best_cost < std::numeric_limits<float_t>::infinity());
+
+                cells = best_permutation;
+                // Update the positions and the topology
+                for(index_t i=0; i<cells.size(); ++i){
+                    pl.cells_[cells[i]].position.x_ = best_positions[i];
+                }
+                for(index_t i=0; i<cells.size(); ++i){
+                    if(i > 0){
+                        assert(pl.cells_[cells[i]].position.x_ >= pl.cells_[cells[i-1]].width + pl.cells_[cells[i-1]].position.x_);
+                    }
+                }
+                for(index_t i=0; i<cells.size(); ++i){
+                    auto & nghs = pl.neighbours_[pl.cells_[cells[i]].neighbours_begin];
+                    if(i > 0){
+                        nghs.first = cells[i-1];
+                    }
+                    else{
+                        nghs.first = before_row;
+                    }
+                    if(i+1 < cells.size()){
+                        nghs.second = cells[i+1];
+                    }
+                    else{
+                        nghs.second = after_row;
+                    }
+                }
+                if(before_row != null_ind) pl.neighbours_[pl.neighbour_index(before_row, r)].second = cells.front();
+                else pl.row_first_cells_[r] = cells.front();
+                if(after_row != null_ind) pl.neighbours_[pl.neighbour_index(after_row, r)].first = cells.back();
+                else pl.row_last_cells_[r] = cells.back();
+            }
+    
+            if(OSRP_cell != null_ind){
+                // We are on a non-movable cell
+                if( (circuit.get_cell(OSRP_cell).attributes & XMovable) == 0 or pl.cells_[OSRP_cell].height != 1){
+                    OSRP_cell = get_first_standard_cell(pl, r, OSRP_cell); // Go to the next group
+                }
+                else{ // We optimized with the maximum number of cells: just advance one cell and optimize again
+                    OSRP_cell = cells[1];
+                }
+            }
         } // Iteration on the entire row
     } // Iteration on the rows
 
