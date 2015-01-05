@@ -2,11 +2,15 @@
 
 #include <stack>
 #include <functional>
+#include <algorithm>
 
 namespace coloquinte{
 namespace gp{
 
 namespace{
+index_t const null_ind = std::numeric_limits<index_t>::max();
+float_t const INF = std::numeric_limits<float_t>::infinity();
+
 inline void opt_orient(netlist const & circuit, placement_t & pl, std::function<float_t & (point<float_t> &)> coor, mask_t FLIPPABLE){
     std::stack<index_t> opt_cells;
     for(index_t cell_ind = 0; cell_ind < circuit.cell_cnt(); ++cell_ind){
@@ -66,10 +70,7 @@ inline void opt_orient(netlist const & circuit, placement_t & pl, std::function<
             }
         }
 
-        if(n_cost < p_cost)
-            coor(pl.orientations_[cell_ind]) = -1.0;
-        if(p_cost < n_cost)
-            coor(pl.orientations_[cell_ind]) =  1.0;
+        coor(pl.orientations_[cell_ind]) = p_cost <= n_cost ? 1.0 : -1.0;
 
         // If we changed the orientation, check the extreme pins which changed and try their cells again
         if(coor(pl.orientations_[cell_ind]) != old_orientation){
@@ -81,6 +82,51 @@ inline void opt_orient(netlist const & circuit, placement_t & pl, std::function<
         }
     }
 }
+
+inline void spread_orient(netlist const & circuit, placement_t & pl, std::function<float_t & (point<float_t> &)> coor, mask_t FLIPPABLE){
+    std::vector<float_t> weights(circuit.cell_cnt(), 0.0);
+    for(index_t n=0; n<circuit.net_cnt(); ++n){
+        float_t min_pos=INF, max_pos=-INF;
+        float_t min_offs=INF, max_offs=-INF;
+        index_t min_ind=null_ind, max_ind=null_ind;
+        for(netlist::pin_t p : circuit.get_net(n)){
+            if( (circuit.get_cell(p.cell_ind).attributes & FLIPPABLE) != 0){
+                float_t pos = coor(pl.positions_[p.cell_ind]) + coor(pl.orientations_[p.cell_ind]) * coor(p.offset);
+                if(pos < min_pos){
+                    min_pos = pos;
+                    min_ind = null_ind;
+                }
+                if(pos > max_pos){
+                    max_pos = pos;
+                    max_ind = null_ind;
+                }
+            }
+            else{
+                float_t pos = coor(pl.positions_[p.cell_ind]);
+                if(pos < min_pos){
+                    min_pos = pos;
+                    min_ind = p.cell_ind;
+                    min_offs = coor(p.offset);
+                }
+                if(pos > max_pos){
+                    max_pos = pos;
+                    max_ind = p.cell_ind;
+                    max_offs = coor(p.offset);
+                }
+            }
+        }
+
+        float_t net_weight = circuit.get_net(n).weight;
+
+        if(min_ind != null_ind) weights[min_ind] += net_weight * min_offs;
+        if(max_ind != null_ind) weights[max_ind] -= net_weight * max_offs;
+    }
+
+    for(index_t c=0; c<circuit.cell_cnt(); ++c){
+        coor(pl.orientations_[c]) = (weights[c] >= 0.0) ? 1.0 : -1.0;
+    }
+}
+
 } // End anonymous namespace
 
 // Iteratively optimize feasible orientations; performs only one pass
@@ -88,6 +134,24 @@ void optimize_exact_orientations(netlist const & circuit, placement_t & pl){
     opt_orient(circuit, pl, [](point<float_t> & p) -> float_t & { return p.x_; }, XFlippable);
     opt_orient(circuit, pl, [](point<float_t> & p) -> float_t & { return p.y_; }, YFlippable);
 }
+
+void spread_orientations(netlist const & circuit, placement_t & pl){
+    spread_orient(circuit, pl, [](point<float_t> & p) -> float_t & { return p.x_; }, XFlippable);
+    spread_orient(circuit, pl, [](point<float_t> & p) -> float_t & { return p.y_; }, YFlippable);
+}
+
+void zero_orientations(netlist const & circuit, placement_t & pl){
+    for(index_t i=0; i<circuit.cell_cnt(); ++i){
+        if( (circuit.get_cell(i).attributes & XFlippable) != 0){
+            pl.orientations_[i].x_ =  0.0;
+        }
+        if( (circuit.get_cell(i).attributes & YFlippable) != 0){
+            pl.orientations_[i].y_ =  0.0;
+        }
+    }
+}
+
+
 
 // Just get the feasible orientation closest to the current solution
 void round_orientations(netlist const & circuit, placement_t & pl){

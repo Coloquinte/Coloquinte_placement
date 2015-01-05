@@ -49,6 +49,8 @@ void get_result(netlist const & circuit, placement_t & pl, region_distribution c
 
 // Cell orientation optimization
 void optimize_exact_orientations(netlist const & circuit, placement_t & pl);
+void zero_orientations(netlist const & circuit, placement_t & pl);
+void spread_orientations(netlist const & circuit, placement_t & pl);
 void round_orientations(netlist const & circuit, placement_t & pl);
 
 } // namespace gp
