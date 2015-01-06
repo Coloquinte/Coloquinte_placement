@@ -26,10 +26,12 @@ struct placement_t{
 point<linear_system> empty_linear_systems(netlist const & circuit, placement_t const & pl);
 
 // Net models stuff
-point<linear_system> get_HPWLF_linear_system (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s);
-point<linear_system> get_HPWLR_linear_system (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s);
-point<linear_system> get_star_linear_system  (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s, float_t pull_lim);
-point<linear_system> get_MST_linear_system   (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s);
+point<linear_system> get_HPWLF_linear_system  (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s);
+point<linear_system> get_HPWLR_linear_system  (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s);
+point<linear_system> get_star_linear_system   (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s);
+point<linear_system> get_clique_linear_system (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s);
+point<linear_system> get_MST_linear_system    (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s);
+point<linear_system> get_RSMT_linear_system   (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s);
 
 // Additional forces
 point<linear_system> get_pulling_forces (netlist const & circuit, placement_t const & pl, float_t typical_distance);
@@ -39,7 +41,10 @@ point<linear_system> get_linear_pulling_forces (netlist const & circuit, placeme
 void get_result(netlist const & circuit, placement_t & pl, point<linear_system> & L, float_t tol);
 
 // Cost-related stuff, whether wirelength or disruption
-float_t get_HPWL_wirelength(netlist const & circuit, placement_t const & pl);
+float_t get_HPWL_wirelength (netlist const & circuit, placement_t const & pl);
+float_t get_MST_wirelength  (netlist const & circuit, placement_t const & pl);
+float_t get_RSMT_wirelength (netlist const & circuit, placement_t const & pl);
+
 float_t get_mean_linear_disruption(netlist const & circuit, placement_t const & LB_pl, placement_t const & UB_pl);
 float_t get_mean_quadratic_disruption(netlist const & circuit, placement_t const & LB_pl, placement_t const & UB_pl);
 
