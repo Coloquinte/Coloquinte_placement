@@ -25,6 +25,8 @@ struct pin_2D{
     bool movable;
 
     pin_2D(index_t c, point<float_t> p, point<float_t> o, bool m) : cell_ind(c), pos(p), offs(o), movable(m){}
+    pin_1D x() const{ return pin_1D(cell_ind, pos.x_, offs.x_, movable); }
+    pin_1D y() const{ return pin_1D(cell_ind, pos.y_, offs.y_, movable); }
 };
 
 inline std::vector<pin_2D>         get_pins_2D(netlist const & circuit, placement_t const & pl, index_t net_ind){
@@ -33,7 +35,7 @@ inline std::vector<pin_2D>         get_pins_2D(netlist const & circuit, placemen
         point<float_t> offs = static_cast<point<float_t> >(p.offset) * pl.orientations_[p.cell_ind];
         point<float_t> pos  = static_cast<point<float_t> >(offs)     + pl.positions_[p.cell_ind];
 
-        bool movable = (circuit.get_cell(p.cell_ind).attributes & (XMovable|YMovable)) != 0;
+        bool movable = (circuit.get_cell(p.cell_ind).attributes & XMovable) != 0 and (circuit.get_cell(p.cell_ind).attributes & YMovable) != 0;
         ret.push_back(pin_2D(p.cell_ind, pos, offs, movable));
     }
     return ret;
