@@ -158,7 +158,24 @@ inline void southeast_octant_neighbours(std::vector<pin_2D> pins, std::vector<st
 
 std::vector<std::pair<index_t, index_t> > get_spanning_tree(std::vector<pin_2D> const & pins){
     typedef std::pair<index_t, index_t> edge_t;
+
 	std::vector<edge_t> edges;
+    
+    if(pins.size() <= 2){
+        if(pins.size() == 2){
+            edges.push_back(edge_t(0, 1));
+        }
+        if(pins.size() == 3){
+            auto dists = std::array<float_t, 3>({dist(pins[1], pins[2]), dist(pins[1], pins[2]), dist(pins[0], pins[1])});
+            index_t mx = std::max_element(dists.begin(), dists.end()) - dists.begin();
+            for(index_t i=0; i<3; ++i){
+                if(i != mx)
+                    edges.push_back(edge_t((i+1) % 3, (i+2) % 3));
+            }
+        }
+        return edges;
+    }
+    
     northeast_octant_neighbours(pins, edges);
     southeast_octant_neighbours(pins, edges);
 

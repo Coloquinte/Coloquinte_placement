@@ -29,6 +29,11 @@ struct pin_2D{
     pin_1D y() const{ return pin_1D(cell_ind, pos.y_, offs.y_, movable); }
 };
 
+inline float_t dist(pin_2D const a, pin_2D const b){
+    point<float_t> diff = a.pos - b.pos;
+    return std::abs(diff.x_) + std::abs(diff.y_);
+}
+
 inline std::vector<pin_2D>         get_pins_2D(netlist const & circuit, placement_t const & pl, index_t net_ind){
     std::vector<pin_2D> ret;
     for(auto p : circuit.get_net(net_ind)){
