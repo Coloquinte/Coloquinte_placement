@@ -55,12 +55,9 @@ class region_distribution{
         capacity_t allocated_capacity_;
         point<float_t> pos_;
         index_t index_in_list_;
-        float_t marginal_cost_;
 
         cell_ref(){}
         cell_ref(capacity_t demand, point<float_t> p, index_t ind) : allocated_capacity_(demand), pos_(p), index_in_list_(ind){}
-
-        bool operator<(cell_ref const o) const{ return marginal_cost_ < o.marginal_cost_; }
         friend region;
     };
     

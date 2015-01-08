@@ -152,10 +152,17 @@ void region_distribution::y_bipartition(){
 }
 
 // The big awful function that handles optimal cell distribution between two regions; not meant to be called externally
-void region_distribution::region::distribute_new_cells(region & region_a, region & region_b, std::vector<cell_ref> cells){
+void region_distribution::region::distribute_new_cells(region & region_a, region & region_b, std::vector<cell_ref> basic_cells){
+    struct cost_diff_cell : cell_ref{
+        float_t marginal_cost_;
 
-    for(cell_ref & c : cells){
-        c.marginal_cost_ = region_a.distance(c) - region_b.distance(c);
+        bool operator<(cost_diff_cell const o) const{ return marginal_cost_ < o.marginal_cost_; }
+        cost_diff_cell(cell_ref cell, float_t cost) : cell_ref(cell), marginal_cost_(cost) {}
+    };
+
+    std::vector<cost_diff_cell> cells;
+    for(cell_ref const c : basic_cells){
+        cells.push_back(cost_diff_cell(c, region_a.distance(c) - region_b.distance(c)));
     }
 
     // Cells trending toward a first
