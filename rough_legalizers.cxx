@@ -342,69 +342,60 @@ void region_distribution::redo_bipartitions(){
     // The most important feature is diagonal optimization, since it is not done during partitioning
     // In order to optimize past obstacles even if only local optimization is considered, regions with no capacity are ignored
 
-    // Perform optimization on the diagonals going South-East
-    for(index_t diag = 0; diag < x_regions_cnt() + y_regions_cnt() - 1; ++diag){
-        index_t x_begin, y_begin, nbr_elts;
-        if(diag < y_regions_cnt()){ // Begin on the left side
-            x_begin = 0;
-            y_begin = diag;
-            nbr_elts = std::min(x_regions_cnt(), y_regions_cnt() - diag);
-        }
-        else{ // Begin on the upper side
-            x_begin = diag - y_regions_cnt() + 1;
-            y_begin = 0;
-            nbr_elts = std::min(y_regions_cnt(), x_regions_cnt() + y_regions_cnt() - diag -1);
-        }
-        index_t offs = 0;
-        for(index_t nxt_offs = 1; nxt_offs < nbr_elts; ++nxt_offs){
-            if(get_region(x_begin+nxt_offs, y_begin+nxt_offs).capacity() > 0){
-                region::redistribute_cells(get_region(x_begin+offs, y_begin+offs), get_region(x_begin+nxt_offs, y_begin+nxt_offs));
-                offs = nxt_offs;
+    auto const optimize_quad_diag = [&](index_t x, index_t y){
+        region::redistribute_cells(get_region(x, y), get_region(x+1, y+1));
+        region::redistribute_cells(get_region(x+1, y), get_region(x, y+1));
+    };
+    auto const optimize_H = [&](index_t x, index_t y){
+        region::redistribute_cells(get_region(x, y), get_region(x+1, y));
+    };
+    auto const optimize_V = [&](index_t x, index_t y){
+        region::redistribute_cells(get_region(x, y), get_region(x, y+1));
+    };
+
+    auto const optimize_diag_on_x = [&](index_t x){
+        for(index_t y=0; y+1 < y_regions_cnt(); y+=2){
+            if(y+2 < y_regions_cnt()){
+                // y odd
+                optimize_quad_diag(x, y+1);
             }
+            // y even
+            optimize_quad_diag(x, y);
         }
+    };
+
+    // Take four cells at a time and optimize them
+    for(index_t x=0; x+1 < x_regions_cnt(); x+=2){
+        if(x+2 < x_regions_cnt()){
+            // x odd
+            optimize_diag_on_x(x+1);
+        }
+        // x even
+        optimize_diag_on_x(x);
     }
 
-    // Perform optimization on the diagonals going South-West
-    for(index_t diag = 0; diag < x_regions_cnt() + y_regions_cnt() - 1; ++diag){
-        index_t x_begin, y_begin, nbr_elts;
-        if(diag < x_regions_cnt()){ // Begin on the upper side
-            x_begin = diag;
-            y_begin = 0;
-            nbr_elts = std::min(diag, y_regions_cnt());
-        }
-        else{ // Begin on the right side
-            x_begin = x_regions_cnt() - 1;
-            y_begin = diag - x_regions_cnt() + 1;
-            nbr_elts = std::min(x_regions_cnt(), x_regions_cnt() + y_regions_cnt() - diag - 1);
-        }
-        index_t offs = 0;
-        for(index_t nxt_offs = 1; nxt_offs < nbr_elts; ++nxt_offs){
-            if(get_region(x_begin-nxt_offs, y_begin+nxt_offs).capacity() > 0){
-                region::redistribute_cells(get_region(x_begin-offs, y_begin+offs), get_region(x_begin-nxt_offs, y_begin+nxt_offs));
-                offs = nxt_offs;
-            }
-        }
-    }
-    
-    // Perform optimization on the columns
-    for(index_t x = 0; x < x_regions_cnt(); ++x){
-        index_t y=0;
-        for(index_t nxt_y = 1; nxt_y < y_regions_cnt(); ++nxt_y){
-            if(get_region(x, nxt_y).capacity() > 0){
-                region::redistribute_cells(get_region(x, y), get_region(x, nxt_y));
-                y = nxt_y;
-            }
-        }
-    }
+    // The same for x and y optimization
 
-    // Perform optimization on the rows
-    for(index_t y = 0; y < y_regions_cnt(); ++y){
-        index_t x=0;
-        for(index_t nxt_x = 1; nxt_x < x_regions_cnt(); ++nxt_x){
-            if(get_region(nxt_x, y).capacity() > 0){
-                region::redistribute_cells(get_region(x, y), get_region(nxt_x, y));
-                x = nxt_x;
+    // x bipartitions
+    for(index_t y=0; y < y_regions_cnt(); ++y){
+        for(index_t x=0; x+1 < x_regions_cnt(); x+=2){
+            if(x+2 < x_regions_cnt()){
+                // x odd
+                optimize_H(x+1, y);
             }
+            // x even
+            optimize_H(x, y);
+        }
+    }
+    // y bipartitions
+    for(index_t x=0; x < x_regions_cnt(); ++x){
+        for(index_t y=0; y+1 < y_regions_cnt(); y+=2){
+            if(y+2 < y_regions_cnt()){
+                // y odd
+                optimize_V(x, y+1);
+            }
+            // y even
+            optimize_V(x, y);
         }
     }
 }

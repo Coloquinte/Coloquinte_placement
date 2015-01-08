@@ -121,10 +121,6 @@ class region_distribution{
     
     private:
     // Helper functions
-    
-    // Reduces the number of cuts in the current solution to at most region_cnt() - 1 without loss of solution quality
-    void fractions_minimization();
-
     region & get_region(index_t x_coord, index_t y_coord);
 
     public:
@@ -175,7 +171,7 @@ class region_distribution{
     void line_moves();
 
     // Try to remove duplicate fractional cells    
-    void fraction_minimization();
+    void fractions_minimization();
 
     /*
      * Manipulate

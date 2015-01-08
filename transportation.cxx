@@ -6,24 +6,11 @@ namespace coloquinte{
 namespace gp{
 
 void current_allocation::update_edge(index_t r1, index_t r2){
-    while(not best_interregions_costs[r1][r2].empty()){
-        movable_source cur = best_interregions_costs[r1][r2].top();
-        // Test if the edge still exists
-        if(sr_allocations[r1][cur.source] != 0){
-            // Found the edge: stop
-            break;
-        }
-        else{
-            // This edge is in fact empty
-            best_interregions_costs[r1][r2].pop();
-        }
+    while(not best_interregions_costs[r1][r2].empty() and sr_allocations[r1][best_interregions_costs[r1][r2].top().source] == 0){
+        best_interregions_costs[r1][r2].pop();
     }
 
-    if(best_interregions_costs[r1][r2].empty()){
-        // There is no edge: return
-        return;
-    }
-    else{
+    if(not best_interregions_costs[r1][r2].empty()){
         // There is an edge
         movable_source cur = best_interregions_costs[r1][r2].top();
         float_t new_cost = r_costs[r2] + cur.cost;
