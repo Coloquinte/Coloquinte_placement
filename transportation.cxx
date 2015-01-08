@@ -77,13 +77,13 @@ bool current_allocation::push_edge(index_t reg, capacity_t flow){
     assert(r_capacities[reg] == 0); // The region is full, which explains why we need to push
     assert(flow <= arc_capacities[reg]); // The flow is not bigger than what can be sent
 
-    arc_capacities[reg] -= flow; // Just update the capacity if it turns out that we don't need to run Dijkstra
-
+    arc_capacities[reg] = sr_allocations[reg][cur_source]; // Just update the capacity if it turns out that we don't need to run Dijkstra
+    
     if(arc_capacities[reg] == 0){
         // The source may have been deleted from a region: rerun Dijkstra at the end
         return true;
     }
-    else if(not already_present and r_capacities[r_parents[reg]] == 0){ 
+    else if(not already_present and r_capacities[r_parents[reg]] == 0){
         // A new source is allocated to a full region: rerun Dijkstra at the end if it changed the heap's top
         return add_source_to_heaps(r_parents[reg], cur_source);
     }
