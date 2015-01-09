@@ -226,7 +226,7 @@ float_t get_RSMT_wirelength(netlist const & circuit, placement_t const & pl){
         for(pin_2D const p : pins){
             points.push_back(p.pos);
         }
-        sum += RSMT_length(points);
+        sum += RSMT_length(points, 8);
     }
     return sum;
 }

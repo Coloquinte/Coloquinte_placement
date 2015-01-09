@@ -190,8 +190,9 @@ float_t MST_length(std::vector<point<float_t> > const & pins){
     return sum;
 }
 
-float_t RSMT_length(std::vector<point<float_t> > const & pins){
-    if(pins.size() <= 10){
+float_t RSMT_length(std::vector<point<float_t> > const & pins, index_t exactitude_limit){
+    assert(exactitude_limit <= 10 and exactitude_limit >= 3);
+    if(pins.size() <= exactitude_limit){
         if(pins.size() <= 3){
             if(pins.size() == 2){
                 return std::abs(pins[0].x_ - pins[1].x_) + std::abs(pins[0].y_ - pins[1].y_);

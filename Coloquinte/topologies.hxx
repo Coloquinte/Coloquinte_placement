@@ -7,7 +7,7 @@
 namespace coloquinte{
 
 float_t MST_length(std::vector<point<float_t> > const & pins);
-float_t RSMT_length(std::vector<point<float_t> > const & pins);
+float_t RSMT_length(std::vector<point<float_t> > const & pins, index_t exactitude_limit);
 std::vector<std::pair<index_t, index_t> > get_MST_topology(std::vector<point<float_t> > const & pins);
 
 template<int pin_cnt>
