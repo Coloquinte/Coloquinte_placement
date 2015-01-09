@@ -1,6 +1,5 @@
 #include "Coloquinte/circuit_helper.hxx"
-
-#include <set>
+#include "Coloquinte/topologies.hxx"
 
 namespace coloquinte{
 namespace gp{
@@ -106,143 +105,6 @@ void get_clique(std::vector<pin_1D> const & pins, linear_system & L, float_t tol
     }
 }
 
-inline void northeast_octant_neighbours(std::vector<pin_2D> pins, std::vector<std::pair<index_t, index_t> > & edges){
-    struct indexed_pt : point<float_t>{
-        index_t index;
-        indexed_pt(point<float_t> pt, index_t pos) : point<float_t>(pt), index(pos) {}
-    };
-
-    std::vector<indexed_pt> point_list;
-    for(index_t i=0; i<pins.size(); ++i){
-        point_list.push_back(indexed_pt(pins[i].pos, i));
-    }
-
-    std::sort(point_list.begin(), point_list.end(),
-                [](indexed_pt const a, indexed_pt const b){ return a.x_ + a.y_ < b.x_ + b.y_; }
-              );
-
-    // Decreasing order of x and y; multiset not necessary because no two elements have same coordinate
-    std::set<indexed_pt, std::function<bool (indexed_pt const, indexed_pt const)> >
-                      active_upper_octant([](indexed_pt const a, indexed_pt const b)->bool{return a.x_ > b.x_;}),
-                      active_lower_octant([](indexed_pt const a, indexed_pt const b)->bool{return a.y_ > b.y_;});
-
-    for(indexed_pt const current : point_list){
-        { // North to north-east region
-            auto first_it = active_upper_octant.lower_bound(current); // Largest x with x <= current.x
-            auto it = first_it;
-            for(; it != active_upper_octant.end() && it->x_ - it->y_ >= current.x_ - current.y_; ++it){
-                edges.push_back(std::pair<index_t, index_t>(current.index, it->index));
-            }
-            if(first_it != active_upper_octant.end()){ active_upper_octant.erase(first_it, it); }
-            active_upper_octant.insert(it, current); // Hint to insert the element since it is the correct position
-        } // End region
-        { // North-east to east region
-            auto first_it = active_lower_octant.lower_bound(current); // Largest y with y <= current.y
-            auto it = first_it;
-            for(; it != active_lower_octant.end() && it->y_ - it->x_ >= current.y_ - current.x_; ++it){
-                edges.push_back(std::pair<index_t, index_t>(current.index, it->index));
-            }
-            if(first_it != active_lower_octant.end()){ active_lower_octant.erase(first_it, it); }
-            active_lower_octant.insert(it, current); // Hint to insert the element since it is the correct position
-        } // End region
-    }
-}
-
-// Gets the nearest octant neighbour for each point in the south-east quadrant
-inline void southeast_octant_neighbours(std::vector<pin_2D> pins, std::vector<std::pair<index_t, index_t> > & edges){
-    for(auto & pin : pins){
-        pin.pos.y_ = - pin.pos.y_;
-    }
-    northeast_octant_neighbours(pins, edges);
-}
-
-std::vector<std::pair<index_t, index_t> > get_spanning_tree(std::vector<pin_2D> const & pins){
-    typedef std::pair<index_t, index_t> edge_t;
-
-	std::vector<edge_t> edges;
-    
-    if(pins.size() <= 2){
-        if(pins.size() == 2){
-            edges.push_back(edge_t(0, 1));
-        }
-        if(pins.size() == 3){
-            auto dists = std::array<float_t, 3>({dist(pins[1], pins[2]), dist(pins[1], pins[2]), dist(pins[0], pins[1])});
-            index_t mx = std::max_element(dists.begin(), dists.end()) - dists.begin();
-            for(index_t i=0; i<3; ++i){
-                if(i != mx)
-                    edges.push_back(edge_t((i+1) % 3, (i+2) % 3));
-            }
-        }
-        return edges;
-    }
-    
-    northeast_octant_neighbours(pins, edges);
-    southeast_octant_neighbours(pins, edges);
-
-	std::vector<edge_t> returned_edges;
-
-    class union_find{
-    	index_t* connex_representants;
-    	index_t  sz;
-    
-    	public:
-    	void merge(index_t a, index_t b){
-    		connex_representants[find(a)] = b;
-    	}
-    
-    	index_t find(index_t ind){
-    		if(connex_representants[ind] != ind){
-    			connex_representants[ind] = find(connex_representants[ind]);
-    		}
-    		return connex_representants[ind];
-    	}
-    
-    	union_find(index_t s){
-    		sz = s;
-    		connex_representants = new index_t[size()];
-    		for(index_t i=0; i<size(); ++i){
-    			connex_representants[i] = i;
-    		}
-    	}
-    	
-    	~union_find(){
-    		delete connex_representants;
-    	}
-    
-        bool is_connex(){
-            bool connex = true;
-            for(index_t i=0; i+1<size(); ++i){
-                connex = connex && (find(i) == find(i+1));
-            }
-            return connex;
-        }
-    	
-    	index_t size() const { return sz; }
-    };
-
-    auto edge_length = [&](edge_t E){
-        point<float_t> p1 = pins[E.first].pos,
-                       p2 = pins[E.second].pos;
-        return std::abs(p1.x_ - p2.x_) + std::abs(p1.y_ - p2.y_);
-    };
-	// Perform Kruskal to get the tree
-	std::sort(edges.begin(), edges.end(), [&](edge_t a, edge_t b){ return edge_length(a) < edge_length(b); });
-
-	union_find merger(pins.size());
-
-	for(index_t i=0; i<edges.size() && returned_edges.size()+1 < pins.size(); ++i){
-		edge_t E = edges[i];
-		if(merger.find(E.first) != merger.find(E.second)){
-			merger.merge(E.first, E.second);
-            assert(merger.find(E.first) == merger.find(E.second));
-			returned_edges.push_back(E);
-		}
-	}
-	assert(returned_edges.size() + 1 == pins.size());
-    assert(merger.is_connex());
-	return returned_edges;
-}
-
 } // End anonymous namespace
 
 point<linear_system> get_HPWLF_linear_system (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s){
@@ -317,7 +179,11 @@ point<linear_system> get_MST_linear_system(netlist const & circuit, placement_t 
         if(pin_cnt < min_s or pin_cnt >= max_s or pin_cnt <= 1) continue;
             
         auto pins = get_pins_2D(circuit, pl, i);
-        auto edges = get_spanning_tree(pins);
+        std::vector<point<float_t> > points;
+        for(pin_2D const p : pins){
+            points.push_back(p.pos);
+        }
+        auto edges = get_MST_topology(points);
         for(auto E : edges){
             add_force(pins[E.first].x(), pins[E.second].x(), L.x_, tol, 1.0);
             add_force(pins[E.first].y(), pins[E.second].y(), L.y_, tol, 1.0);
@@ -342,21 +208,25 @@ float_t get_HPWL_wirelength(netlist const & circuit, placement_t const & pl){
 float_t get_MST_wirelength(netlist const & circuit, placement_t const & pl){
     float_t sum = 0.0;
     for(index_t i=0; i<circuit.net_cnt(); ++i){
-        if(circuit.get_net(i).pin_cnt <= 1) continue;
+        auto pins = get_pins_2D(circuit, pl, i);
+        std::vector<point<float_t> > points;
+        for(pin_2D const p : pins){
+            points.push_back(p.pos);
+        }
+        sum += MST_length(points);
+    }
+    return sum;
+}
 
-        if(circuit.get_net(i).pin_cnt <= 3){
-            auto pins = get_pins_1D(circuit, pl, i);
-            auto minmaxX = std::minmax_element(pins.x_.begin(), pins.x_.end()), minmaxY = std::minmax_element(pins.y_.begin(), pins.y_.end());
-            sum += ((minmaxX.second->pos - minmaxX.first->pos) + (minmaxY.second->pos - minmaxY.first->pos));
+float_t get_RSMT_wirelength(netlist const & circuit, placement_t const & pl){
+    float_t sum = 0.0;
+    for(index_t i=0; i<circuit.net_cnt(); ++i){
+        auto pins = get_pins_2D(circuit, pl, i);
+        std::vector<point<float_t> > points;
+        for(pin_2D const p : pins){
+            points.push_back(p.pos);
         }
-        else{
-            auto pins = get_pins_2D(circuit, pl, i);
-            auto edges = get_spanning_tree(pins);
-            for(auto E : edges){
-                sum += std::abs(pins[E.first].pos.x_ - pins[E.second].pos.x_);
-                sum += std::abs(pins[E.first].pos.y_ - pins[E.second].pos.y_);
-            }
-        }
+        sum += RSMT_length(points);
     }
     return sum;
 }

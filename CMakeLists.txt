@@ -24,6 +24,7 @@
                                            Coloquinte/rough_legalizers.hxx
                                            Coloquinte/transportation.hxx
                                            Coloquinte/detailed.hxx
+                                           Coloquinte/topologies.hxx
                                            Coloquinte/ordered_single_row.hxx
                        )	           
                    set ( cpps              circuit.cxx
@@ -32,6 +33,8 @@
                                            transportation.cxx
                                            orientation.cxx
                                            detailed.cxx
+                                           topologies.cxx
+                                           lookup_table.cxx
                                            legalizer.cxx
                        )
                    set ( coloquintecpps    main.cxx )
