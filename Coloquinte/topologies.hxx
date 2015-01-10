@@ -9,6 +9,7 @@ namespace coloquinte{
 float_t MST_length(std::vector<point<float_t> > const & pins);
 float_t RSMT_length(std::vector<point<float_t> > const & pins, index_t exactitude_limit);
 std::vector<std::pair<index_t, index_t> > get_MST_topology(std::vector<point<float_t> > const & pins);
+point<std::vector<std::pair<index_t, index_t> > > get_RSMT_topology(std::vector<point<float_t> > const & pins, index_t exactitude_limit);
 
 template<int pin_cnt>
 struct Hconnectivity{
@@ -58,11 +59,11 @@ struct Hconnectivity{
     std::array<edge_t, pin_cnt-1> get_x_topology(std::array<point<float_t>, pin_cnt> const sorted_points) const{
         std::array<edge_t, pin_cnt-1> ret;
         std::uint8_t b_con = extremes & 15u, e_con = extremes >> 4;
-        ret.x_[0] = edge_t(0, b_con+1);
-        ret.x_[1] = edge_t(pin_cnt-1, e_con+1);
+        ret[0] = edge_t(0, b_con+1);
+        ret[1] = edge_t(pin_cnt-1, e_con+1);
         for(index_t i=0; i<pin_cnt-3; ++i){
             std::uint8_t E = connexions[i];
-            ret.x_[i+2] = edge_t(E & 15u, E >> 4);
+            ret[i+2] = edge_t((E & 15u) +1, (E >> 4) +1);
         }
 
         return ret;
