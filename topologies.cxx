@@ -8,8 +8,14 @@
 
 namespace coloquinte{
 namespace {
+
 template<int n, int array_size>
-float_t get_wirelength(std::array<point<float_t>, n> points, std::array<Hconnectivity<n>, array_size> const & lookups){
+float_t get_wirelength(std::vector<point<float_t> > const & pins, std::array<Hconnectivity<n>, array_size> const & lookups){
+    std::array<point<float_t>, n> points;
+    for(index_t i=0; i<n; ++i){
+        points[i] = pins[i];
+    }
+
     std::sort(points.begin(), points.end(), [](point<float_t> a , point<float_t> b){return a.x_ < b.x_; });
     float_t cost = std::numeric_limits<float_t>::infinity();
     for(auto const L : lookups){
@@ -18,26 +24,26 @@ float_t get_wirelength(std::array<point<float_t>, n> points, std::array<Hconnect
     return cost;
 }
 
-float_t get_4_wirelength(std::array<point<float_t>, 4> points){
-    return get_wirelength<4, 2>(points, steiner_lookup::topologies_4);
-}
-float_t get_5_wirelength(std::array<point<float_t>, 5> points){
-    return get_wirelength<5, 6>(points, steiner_lookup::topologies_5);
-}
-float_t get_6_wirelength(std::array<point<float_t>, 6> points){
-    return get_wirelength<6, 23>(points, steiner_lookup::topologies_6);
-}
-float_t get_7_wirelength(std::array<point<float_t>, 7> points){
-    return get_wirelength<7, 111>(points, steiner_lookup::topologies_7);
-}
-float_t get_8_wirelength(std::array<point<float_t>, 8> points){
-    return get_wirelength<8, 642>(points, steiner_lookup::topologies_8);
-}
-float_t get_9_wirelength(std::array<point<float_t>, 9> points){
-    return get_wirelength<9, 4334>(points, steiner_lookup::topologies_9);
-}
-float_t get_10_wirelength(std::array<point<float_t>, 10> points){
-    return get_wirelength<10, 33510>(points, steiner_lookup::topologies_10);
+template<int n, int array_size>
+std::vector<std::pair<index_t, index_t> > get_topology(std::vector<point<float_t> > const & pins, std::array<Hconnectivity<n>, array_size> const & lookups){
+    std::array<point<float_t>, n> points;
+    for(index_t i=0; i<n; ++i){
+        points[i] = pins[i];
+    }
+
+    std::sort(points.begin(), points.end(), [](point<float_t> a , point<float_t> b){return a.x_ < b.x_; });
+    float_t cost = std::numeric_limits<float_t>::infinity();
+    index_t ind  = std::numeric_limits<index_t>::max();
+    for(index_t i=0; i<array_size; ++i){
+        float_t this_cost = lookups[i].get_wirelength(points);
+        if(this_cost < cost){
+            cost = this_cost;
+            ind = i;
+        }
+    }
+    assert(ind < std::numeric_limits<index_t>::max());
+    auto topo = lookups[ind].get_topology();
+    return std::vector<std::pair<index_t, index_t> >(topo.begin(), topo.end());
 }
 
 inline void northeast_octant_neighbours(std::vector<point<float_t> > pins, std::vector<std::pair<index_t, index_t> > & edges){
@@ -209,61 +215,19 @@ float_t RSMT_length(std::vector<point<float_t> > const & pins, index_t exactitud
         }
         switch(pins.size()){
             case 4:
-            {
-                std::array<point<float_t>, 4> points;
-                for(index_t i=0; i<4; ++i){
-                    points[i] = pins[i];
-                }
-                return get_4_wirelength(points);
-            }
+                return get_wirelength<4, 2>(pins, steiner_lookup::topologies_4);
             case 5:
-            {
-                std::array<point<float_t>, 5> points;
-                for(index_t i=0; i<5; ++i){
-                    points[i] = pins[i];
-                }
-                return get_5_wirelength(points);
-            }
+                return get_wirelength<5, 6>(pins, steiner_lookup::topologies_5);
             case 6:
-            {
-                std::array<point<float_t>, 6> points;
-                for(index_t i=0; i<6; ++i){
-                    points[i] = pins[i];
-                }
-                return get_6_wirelength(points);
-            }
+                return get_wirelength<6, 23>(pins, steiner_lookup::topologies_6);
             case 7:
-            {
-                std::array<point<float_t>, 7> points;
-                for(index_t i=0; i<7; ++i){
-                    points[i] = pins[i];
-                }
-                return get_7_wirelength(points);
-            }
+                return get_wirelength<7, 111>(pins, steiner_lookup::topologies_7);
             case 8:
-            {
-                std::array<point<float_t>, 8> points;
-                for(index_t i=0; i<8; ++i){
-                    points[i] = pins[i];
-                }
-                return get_8_wirelength(points);
-            }
+                return get_wirelength<8, 642>(pins, steiner_lookup::topologies_8);
             case 9:
-            {
-                std::array<point<float_t>, 9> points;
-                for(index_t i=0; i<9; ++i){
-                    points[i] = pins[i];
-                }
-                return get_9_wirelength(points);
-            }
+                return get_wirelength<9, 4334>(pins, steiner_lookup::topologies_9);
             case 10:
-            {
-                std::array<point<float_t>, 10> points;
-                for(index_t i=0; i<10; ++i){
-                    points[i] = pins[i];
-                }
-                return get_10_wirelength(points);
-            }
+                return get_wirelength<10, 33510>(pins, steiner_lookup::topologies_10);
             default:
                 abort();
         }

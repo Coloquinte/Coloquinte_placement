@@ -17,6 +17,8 @@ struct Hconnectivity{
     std::uint8_t connexions[pin_cnt-3];
     std::uint8_t extremes;
 
+    typedef std::pair<index_t, index_t> edge_t;
+
     struct minmax_t{
         float_t min, max;
 
@@ -40,11 +42,11 @@ struct Hconnectivity{
         std::uint8_t b_con = extremes & 15u, e_con = extremes >> 4;
         minmaxs[b_con].merge(sorted_points.front() .y_);
         minmaxs[e_con].merge(sorted_points.back()  .y_);
-        for(auto const E : connexions){
+        for(std::uint8_t const E : connexions){
             minmaxs[(E >> 4)].merge(minmaxs[(E & 15u)]);
         }
         float_t cost = sorted_points.back().x_ - sorted_points.front().x_ + sorted_points[b_con+1].x_ - sorted_points[e_con+1].x_;
-        for(auto const E : connexions){
+        for(std::uint8_t const E : connexions){
             cost += std::abs(sorted_points[(E >> 4) +1].x_ - sorted_points[(E & 15u) +1].x_);
         }
         for(index_t i=0; i<pin_cnt-2; ++i){
@@ -52,7 +54,19 @@ struct Hconnectivity{
         }
         return cost;
     }
-    //point<std::array<edge_t, pin_cnt-1> > get_topology(std::array<point<float_t>, pin_cnt> const sorted_points) const;
+
+    std::array<edge_t, pin_cnt-1> get_x_topology(std::array<point<float_t>, pin_cnt> const sorted_points) const{
+        std::array<edge_t, pin_cnt-1> ret;
+        std::uint8_t b_con = extremes & 15u, e_con = extremes >> 4;
+        ret.x_[0] = edge_t(0, b_con+1);
+        ret.x_[1] = edge_t(pin_cnt-1, e_con+1);
+        for(index_t i=0; i<pin_cnt-3; ++i){
+            std::uint8_t E = connexions[i];
+            ret.x_[i+2] = edge_t(E & 15u, E >> 4);
+        }
+
+        return ret;
+    }
 };
 
 namespace steiner_lookup{
