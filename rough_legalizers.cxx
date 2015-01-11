@@ -373,6 +373,12 @@ void region_distribution::redo_bipartitions(){
             }
             // x even
             optimize_quad_diag(x, y);
+
+            optimize_V(x, y);
+            optimize_V(x+1, y);
+            if(x+3 == x_regions_cnt()){ // If x+2 is the last and would be skipped in the next iteration
+                optimize_V(x+2, y);
+            }
         }
     };
 
@@ -397,17 +403,6 @@ void region_distribution::redo_bipartitions(){
             }
             // x even
             optimize_H(x, y);
-        }
-    }
-    // y bipartitions
-    for(index_t x=0; x < x_regions_cnt(); ++x){
-        for(index_t y=0; y+1 < y_regions_cnt(); y+=2){
-            if(y+2 < y_regions_cnt()){
-                // y odd
-                optimize_V(x, y+1);
-            }
-            // y even
-            optimize_V(x, y);
         }
     }
 }
