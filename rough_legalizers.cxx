@@ -244,12 +244,14 @@ void region_distribution::region::distribute_cells(region & a, region & b) const
 }
 
 void region_distribution::region::redistribute_cells(region & Ra, region & Rb){
-    std::vector<cell_ref> cells;
-    cells.reserve(Ra.cell_references_.size()+Rb.cell_references_.size());
-    cells.insert(cells.end(), Ra.cell_references_.begin(), Ra.cell_references_.end());
-    cells.insert(cells.end(), Rb.cell_references_.begin(), Rb.cell_references_.end());
+    if(Ra.capacity() > 0 and Rb.capacity() > 0){
+        std::vector<cell_ref> cells;
+        cells.reserve(Ra.cell_references_.size()+Rb.cell_references_.size());
+        cells.insert(cells.end(), Ra.cell_references_.begin(), Ra.cell_references_.end());
+        cells.insert(cells.end(), Rb.cell_references_.begin(), Rb.cell_references_.end());
 
-    distribute_new_cells(Ra, Rb, cells);
+        distribute_new_cells(Ra, Rb, cells);
+    }
 }
 
 void region_distribution::region::distribute_new_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions, std::vector<cell_ref> all_cells){
@@ -284,11 +286,13 @@ void region_distribution::region::distribute_new_cells(std::vector<std::referenc
 }
 
 void region_distribution::region::redistribute_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions){
-    std::vector<cell_ref> all_cells;
-    for(region_distribution::region & R : regions){
-        all_cells.insert(all_cells.end(), R.cell_references_.begin(), R.cell_references_.end());
+    if(regions.size() > 1){
+        std::vector<cell_ref> all_cells;
+        for(region_distribution::region & R : regions){
+            all_cells.insert(all_cells.end(), R.cell_references_.begin(), R.cell_references_.end());
+        }
+        distribute_new_cells(regions, all_cells);
     }
-    distribute_new_cells(regions, all_cells);
 }
 
 void region_distribution::region::distribute_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions) const{
@@ -360,25 +364,26 @@ void region_distribution::redo_bipartitions(){
         region::redistribute_cells(get_region(x, y), get_region(x, y+1));
     };
 
-    auto const optimize_diag_on_x = [&](index_t x){
-        for(index_t y=0; y+1 < y_regions_cnt(); y+=2){
-            if(y+2 < y_regions_cnt()){
-                // y odd
-                optimize_quad_diag(x, y+1);
+    // x is the fast index
+    auto const optimize_diag_on_y = [&](index_t y){
+        for(index_t x=0; x+1 < x_regions_cnt(); x+=2){
+            if(x+2 < x_regions_cnt()){
+                // x odd
+                optimize_quad_diag(x+1, y);
             }
-            // y even
+            // x even
             optimize_quad_diag(x, y);
         }
     };
 
     // Take four cells at a time and optimize them
-    for(index_t x=0; x+1 < x_regions_cnt(); x+=2){
-        if(x+2 < x_regions_cnt()){
-            // x odd
-            optimize_diag_on_x(x+1);
+    for(index_t y=0; y+1 < y_regions_cnt(); y+=2){
+        if(y+2 < y_regions_cnt()){
+            // y odd
+            optimize_diag_on_y(y+1);
         }
-        // x even
-        optimize_diag_on_x(x);
+        // y even
+        optimize_diag_on_y(y);
     }
 
     // The same for x and y optimization
@@ -406,30 +411,34 @@ void region_distribution::redo_bipartitions(){
         }
     }
 }
-
+ 
 void region_distribution::redo_multipartitions(index_t x_width, index_t y_width){
-    if(x_width < 2 or y_width < 2) throw std::runtime_error("Multipartitioning requires an optimization window of 2 or more\n");
-    for(index_t x = x_width/2; x+x_width <= x_regions_cnt(); x+=x_width){
-        for(index_t y = y_width/2; y+y_width <= y_regions_cnt(); y+=y_width){
-            std::vector<std::reference_wrapper<region> > to_opt;
-            for(index_t l_x=x; l_x < x + x_width; ++l_x){
-                for(index_t l_y=y; l_y < y + y_width; ++l_y){
-                    to_opt.push_back(std::reference_wrapper<region>(get_region(l_x, l_y)));
-                }
+    if(x_width < 2 and y_width < 2) throw std::runtime_error("Multipartitioning requires an optimization window of 2 or more\n");
+
+    auto const reoptimize_group = [&](index_t x, index_t y){
+        std::vector<std::reference_wrapper<region> > to_opt;
+        for(index_t l_x=x; l_x < std::min(x+x_width, x_regions_cnt()); ++l_x){
+            for(index_t l_y=y; l_y < std::min(y+y_width, y_regions_cnt()); ++l_y){
+                to_opt.push_back(std::reference_wrapper<region>(get_region(l_x, l_y)));
             }
-            region::redistribute_cells(to_opt);
         }
-    }
-    for(index_t x = 0; x+x_width <= x_regions_cnt(); x+=x_width){
-        for(index_t y = 0; y+y_width <= y_regions_cnt(); y+=y_width){
-            std::vector<std::reference_wrapper<region> > to_opt;
-            for(index_t l_x=x; l_x < x + x_width; ++l_x){
-                for(index_t l_y=y; l_y < y + y_width; ++l_y){
-                    to_opt.push_back(std::reference_wrapper<region>(get_region(l_x, l_y)));
-                }
+        region::redistribute_cells(to_opt);
+    };
+
+    auto const optimize_on_x = [&](index_t x){
+        for(index_t y=0; y < y_regions_cnt(); y+=y_width){
+            if(y+y_width < y_regions_cnt()){
+                reoptimize_group(x, y+y_width/2);
             }
-            region::redistribute_cells(to_opt);
+            reoptimize_group(x, y);
         }
+    };
+
+    for(index_t x=0; x < x_regions_cnt(); x+=x_width){
+        if(x+x_width < x_regions_cnt()){
+            optimize_on_x(x+x_width/2);
+        }
+        optimize_on_x(x);
     }
 }
 
