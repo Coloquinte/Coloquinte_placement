@@ -14,9 +14,9 @@ void region_distribution::region::selfcheck() const{
     capacity_t total_allocated = 0;
     for(cell_ref const c : cell_references_){
         total_allocated += c.allocated_capacity_;
-        if(c.allocated_capacity_ <= 0){ abort(); }
+        assert(c.allocated_capacity_ > 0);
     }
-    if(total_allocated > capacity_){ abort(); }
+    assert(total_allocated <= capacity_);
     for(index_t i=0; i+1<obstacles_.size(); ++i){
         for(index_t j=i+1; j<obstacles_.size(); ++j){
             assert(not obstacles_[i].box_.intersects(obstacles_[j].box_));
@@ -32,11 +32,10 @@ void region_distribution::selfcheck() const{
     for(region const & R : placement_regions_){
         for(cell_ref const C : R.cell_references_){
             capacities[C.index_in_list_] += C.allocated_capacity_;
-            if(C.allocated_capacity_ <= 0){ abort(); }
         }
     }
     for(index_t i=0; i < cell_list_.size(); ++i){
-        if(capacities[i] != cell_list_[i].demand_){ abort(); }
+        assert(capacities[i] == cell_list_[i].demand_);
     }
 }
 
@@ -437,6 +436,216 @@ void region_distribution::redo_multipartitions(index_t x_width, index_t y_width)
     }
 }
 
+namespace{
+
+typedef std::pair<float_t, capacity_t> t_elt;
+
+std::vector<capacity_t>  optimize_1D(std::vector<t_elt> sources, std::vector<t_elt> sinks){
+    /* Description of the algorithm:
+     *
+     *    For each cell, put it in its optimal region or the last region where a cell is if there is no space
+     *    Push the changes in the derivative of the cost function to a priority queue; those changes occur
+     *          when evicting the preceding cell from its current region
+     *          when moving to a non-full region
+     *    While the new cell would occupy region which was still free, get the new slope (derivative)
+     *    and push all preceding cell until this region is freed or the slope is 0
+     */
+
+    struct bound{
+        capacity_t pos;
+        float_t slope_diff;
+        bool operator<(bound const o) const{ return pos < o.pos; }
+    };
+
+    std::priority_queue<bound> bounds;
+    std::vector<capacity_t> constraining_pos;
+    std::vector<capacity_t> prev_cap(1, 0), prev_dem(1, 0);
+    for(auto const s : sinks){
+        prev_cap.push_back(s.second + prev_cap.back());
+    }
+    for(auto const s : sources){
+        prev_dem.push_back(s.second + prev_dem.back());
+    }
+    assert(prev_cap.back() >= prev_dem.back());
+
+    const capacity_t min_abs_pos = 0, max_abs_pos = prev_cap.back() - prev_dem.back();
+    assert(min_abs_pos <= max_abs_pos);
+
+    auto push_bound = [&](capacity_t p, float_t s){
+        assert(s >= -0.0);
+        if(p > min_abs_pos){
+            bound B;
+            B.pos = p;
+            B.slope_diff = s;
+            bounds.push(B);
+        }
+    }; 
+
+    capacity_t cur_abs_pos = min_abs_pos;
+    index_t opt_r=0, next_r=0, first_free_r=0;
+
+    for(index_t i=0; i<sources.size(); ++i){
+        // Update the optimal region
+        while(opt_r+1 < sinks.size() and 0.5 * (sinks[opt_r].first + sinks[opt_r+1].first) < sources[i].first){
+            ++opt_r;
+        }
+        // Update the next region
+        index_t prev_next_r = next_r;
+        while(next_r < sinks.size() and sinks[next_r].first < sources[i].first){
+            ++next_r;
+        }
+
+        // Distance to the right - distance to the left
+        auto get_slope = [&](index_t src, index_t boundary){
+            return std::abs(sources[src].first - sinks[boundary+1].first) - std::abs(sources[src].first - sinks[boundary].first);
+        };
+
+        if(i>0){
+            for(index_t j=std::max(prev_next_r,1u)-1; j<std::min(first_free_r, opt_r); ++j){
+                assert(get_slope(i,j) <= get_slope(i-1,j));
+                push_bound(prev_cap[j+1] - prev_dem[i], get_slope(i-1, j) - get_slope(i,j));
+            }
+        }
+        // Add the bounds due to crossing the boundaries alone
+        for(index_t j=first_free_r; j<opt_r; ++j){
+            assert(get_slope(i,j) <= 0.0);
+            push_bound(prev_cap[j+1] - prev_dem[i], -get_slope(i, j));
+        }
+
+        index_t dest_reg = std::max(first_free_r, opt_r);
+        assert(dest_reg < sinks.size());
+        capacity_t this_abs_pos = std::max(cur_abs_pos, prev_cap[dest_reg] - prev_dem[i]); // Just after the previous cell or at the beginning of the destination region
+
+        while(dest_reg+1 < sinks.size() and this_abs_pos > std::max(prev_cap[dest_reg+1] - prev_dem[i+1], min_abs_pos)){ // Absolute position that wouldn't make the cell fit in the region, and we are not in the last region yet
+            capacity_t end_pos = std::max(prev_cap[dest_reg+1] - prev_dem[i+1], min_abs_pos);
+
+            float_t add_slope = get_slope(i, dest_reg);
+            float_t slope = add_slope;
+
+            while(not bounds.empty() and slope >= 0.0 and bounds.top().pos > end_pos){
+                this_abs_pos = bounds.top().pos;
+                slope -= bounds.top().slope_diff;
+                bounds.pop();
+            }
+            if(slope >= 0.0){ // We still push: the cell completely escapes the region
+                this_abs_pos = end_pos;
+                push_bound(end_pos, add_slope-slope);
+            }
+            else{ // Ok, absorbed the whole slope: push what remains and we still occupy the next region
+                push_bound(this_abs_pos, -slope);
+                ++dest_reg;
+            }
+        }
+        first_free_r = dest_reg;
+        cur_abs_pos = this_abs_pos;
+        constraining_pos.push_back(this_abs_pos);
+    }
+
+    assert(constraining_pos.size() == sources.size());
+
+    if(not constraining_pos.empty()){
+        // Calculate the final constraining_pos
+        constraining_pos.back() = std::min(max_abs_pos, constraining_pos.back());
+    }
+
+    std::partial_sum(constraining_pos.rbegin(), constraining_pos.rend(), constraining_pos.rbegin(), [](capacity_t a, capacity_t b)->capacity_t{ return std::min(a, b); });
+
+    for(index_t i=0; i<constraining_pos.size(); ++i){
+        constraining_pos[i] += prev_dem[i];
+    }
+
+    return constraining_pos;
+}
+
+}
+
+void region_distribution::redo_ongridlines(){
+    // Optimize a single line or column
+    auto reg_line_optimize = [&](std::function<float_t (point<float_t>)> coord, std::vector<std::reference_wrapper<region> > regions){
+
+        // Gather all cells and the useful regions
+        std::vector<std::reference_wrapper<region> > all_regions;
+        std::vector<cell_ref> all_cells;
+
+        for(region & reg_ref : regions){
+            if(reg_ref.capacity() > 0){
+                all_cells.insert(all_cells.end(), reg_ref.cell_references_.begin(), reg_ref.cell_references_.end());
+                reg_ref.cell_references_.clear();
+                all_regions.push_back(std::reference_wrapper<region>(reg_ref));
+            }
+            else{
+                assert(reg_ref.cell_references_.empty());
+            }
+        }
+
+        // Sort the regions by coordinate
+        std::sort(all_regions.begin(), all_regions.end(), [&](std::reference_wrapper<region> const a, std::reference_wrapper<region> const b){ return coord(a.get().pos_) < coord(b.get().pos_); });
+        // And the cells
+        std::sort(all_cells.begin(), all_cells.end(), [&](cell_ref const a, cell_ref const b){ return coord(a.pos_) < coord(b.pos_); });
+
+        std::vector<t_elt> sources, sinks;
+        for(cell_ref const c : all_cells){
+            sources.push_back(t_elt(coord(c.pos_), c.allocated_capacity_));
+        }
+        for(region & reg_ref : all_regions){
+            sinks.push_back(t_elt(coord(reg_ref.pos_), reg_ref.capacity()));
+        }
+
+
+        std::vector<capacity_t> const positions = optimize_1D(sources, sinks);
+
+        std::vector<capacity_t> prev_cap(1, 0);
+        for(t_elt e: sinks){
+            assert(e.second > 0);
+            prev_cap.push_back(prev_cap.back() + e.second);
+        }
+
+        for(index_t i=0; i<sources.size(); ++i){
+            assert(positions[i] + sources[i].second <= prev_cap.back());
+            assert(positions[i] >= 0);
+            assert(sources[i].second > 0);
+            if(i>0)
+                assert(sources[i-1].second + positions[i-1] <= positions[i]);
+        }
+
+        for(index_t i=0, r=0; i<sources.size(); ++i){
+            cell_ref const c = all_cells[i];
+
+            capacity_t cur_pos = positions[i];
+            capacity_t cur_cap = sources[i].second;
+            while(cur_cap > 0){
+                while(prev_cap[r+1] <= cur_pos){ // After the end of region r
+                    ++r;
+                }
+                cell_ref new_c = c;
+                capacity_t used_cap = std::min(prev_cap[r+1] - cur_pos, cur_cap);
+                new_c.allocated_capacity_ = used_cap;
+                assert(used_cap >= 0);
+                if(used_cap > 0){
+                    all_regions[r].get().cell_references_.push_back(new_c);
+                }
+                cur_pos += used_cap;
+                cur_cap -= used_cap;
+            }
+        }
+    };
+
+    for(index_t y=0; y<y_regions_cnt(); ++y){
+        std::vector<std::reference_wrapper<region> > regs;
+        for(index_t x=0; x<x_regions_cnt(); ++x){
+            regs.push_back(std::reference_wrapper<region>(get_region(x, y)));
+        }
+        reg_line_optimize([](point<float_t> p){ return p.x_; }, regs);
+    }
+    for(index_t x=0; x<x_regions_cnt(); ++x){
+        std::vector<std::reference_wrapper<region> > regs;
+        for(index_t y=0; y<y_regions_cnt(); ++y){
+            regs.push_back(std::reference_wrapper<region>(get_region(x, y)));
+        }
+        reg_line_optimize([](point<float_t> p){ return p.y_; }, regs);
+    }
+}
+
 region_distribution::region_distribution(box<int_t> placement_area, std::vector<movable_cell> all_cells, std::vector<fixed_cell> all_obstacles) : x_regions_cnt_(1), y_regions_cnt_(1), placement_area_(placement_area), cell_list_(all_cells){
 
     std::vector<cell_ref> references;
@@ -626,7 +835,7 @@ std::vector<region_distribution::movable_cell> region_distribution::export_sprea
 float_t region_distribution::region::cost() const{
     float_t res = 0.0;
     for(cell_ref const C : cell_references_){
-        res += distance(C) * static_cast<float_t>(C.allocated_capacity_);
+        res += (std::abs(C.pos_.x_-pos_.x_) + std::abs(C.pos_.y_-pos_.y_)) * static_cast<float_t>(C.allocated_capacity_);
     }
     return res;
 }

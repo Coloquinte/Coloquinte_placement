@@ -49,7 +49,6 @@ class region_distribution{
     private:
 
     struct region;
-    struct cell_ref;
     
     struct cell_ref{
         capacity_t allocated_capacity_;
@@ -163,6 +162,7 @@ class region_distribution{
     void redo_bipartitions();
     void redo_multipartitions(index_t x_width, index_t y_width);
     void redo_multipartitions(index_t width){ redo_multipartitions(width, width); }
+    void redo_ongridlines();
 
     // Tries to escape local minimas with long-distance moves to non-filled places
     void line_moves();
