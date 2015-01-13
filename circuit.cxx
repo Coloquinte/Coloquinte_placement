@@ -192,6 +192,30 @@ point<linear_system> get_MST_linear_system(netlist const & circuit, placement_t 
     return L;
 }
 
+point<linear_system> get_RSMT_linear_system(netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s){
+    point<linear_system> L = empty_linear_systems(circuit, pl);
+    for(index_t i=0; i<circuit.net_cnt(); ++i){
+        // Has the net the right pin count?
+        index_t pin_cnt = circuit.get_net(i).pin_cnt;
+        if(pin_cnt < min_s or pin_cnt >= max_s or pin_cnt <= 1) continue;
+            
+        auto pins = get_pins_2D(circuit, pl, i);
+        std::vector<point<float_t> > points;
+        for(pin_2D const p : pins){
+            points.push_back(p.pos);
+        }
+        auto const edges = get_RSMT_topology(points, 8);
+        for(auto E : edges.x_){
+            add_force(pins[E.first].x(), pins[E.second].x(), L.x_, tol, 1.0);
+        }
+        for(auto E : edges.y_){
+            add_force(pins[E.first].y(), pins[E.second].y(), L.y_, tol, 1.0);
+        }
+    }
+    return L;
+}
+
+
 float_t get_HPWL_wirelength(netlist const & circuit, placement_t const & pl){
     float_t sum = 0.0;
     for(index_t i=0; i<circuit.net_cnt(); ++i){
