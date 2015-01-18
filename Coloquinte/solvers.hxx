@@ -77,7 +77,7 @@ class linear_system{
     index_t internal_size() const{ return internal_size_; }
     void add_variables(index_t cnt){ target_.resize(target_.size() + cnt, 0.0); }
 
-    std::vector<float_t> solve_CG(std::vector<float_t> guess, float_t improvement_ratio);
+    std::vector<float_t> solve_CG(std::vector<float_t> guess, index_t nbr_iter);
 };
 
 } // namespace gp

@@ -350,12 +350,12 @@ std::vector<float> ellpack_matrix<unroll_len>::solve_CG(std::vector<float> goal,
     return x;
 }
 
-std::vector<float_t> linear_system::solve_CG(std::vector<float_t> guess, float_t improvement_ratio){
+std::vector<float_t> linear_system::solve_CG(std::vector<float_t> guess, index_t nbr_iter){
     doublet_matrix tmp(matrix_, size());
     csr_matrix mat = tmp.get_compressed_matrix();
     //ellpack_matrix<16> mat = tmp.get_ellpack_matrix<16>();
     guess.resize(target_.size(), 0.0);
-    auto ret = mat.solve_CG(target_, guess, 100, 200, 1.0/improvement_ratio);
+    auto ret = mat.solve_CG(target_, guess, nbr_iter, nbr_iter, 0.0);
     ret.resize(internal_size());
     return ret;
 }

@@ -38,7 +38,7 @@ point<linear_system> get_pulling_forces (netlist const & circuit, placement_t co
 point<linear_system> get_linear_pulling_forces (netlist const & circuit, placement_t const & UB_pl, placement_t const & LB_pl, float_t force, float_t min_distance);
 
 // Solve the final linear system
-void get_result(netlist const & circuit, placement_t & pl, point<linear_system> & L, float_t tol);
+void get_result(netlist const & circuit, placement_t & pl, point<linear_system> & L, index_t nbr_iter);
 
 // Cost-related stuff, whether wirelength or disruption
 float_t get_HPWL_wirelength (netlist const & circuit, placement_t const & pl);

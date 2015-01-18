@@ -255,7 +255,7 @@ float_t get_RSMT_wirelength(netlist const & circuit, placement_t const & pl){
     return sum;
 }
 
-void get_result(netlist const & circuit, placement_t & pl, point<linear_system> & L, float_t tol){
+void get_result(netlist const & circuit, placement_t & pl, point<linear_system> & L, index_t nbr_iter){
     std::vector<float_t> x_sol, y_sol;
     std::vector<float_t> x_guess(pl.cell_cnt()), y_guess(pl.cell_cnt());
     
@@ -269,9 +269,9 @@ void get_result(netlist const & circuit, placement_t & pl, point<linear_system> 
     #pragma omp parallel sections num_threads(2)
     {
     #pragma omp section
-    x_sol = L.x_.solve_CG(x_guess, tol);
+    x_sol = L.x_.solve_CG(x_guess, nbr_iter);
     #pragma omp section
-    y_sol = L.y_.solve_CG(y_guess, tol);
+    y_sol = L.y_.solve_CG(y_guess, nbr_iter);
     }
     for(index_t i=0; i<pl.cell_cnt(); ++i){
         if( (circuit.get_cell(i).attributes & XMovable) != 0){
