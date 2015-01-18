@@ -350,17 +350,14 @@ void region_distribution::multipartition(index_t x_width, index_t y_width){
 void region_distribution::redo_bipartitions(){
     // This function performs optimization between neighbouring regions in various directions
     // The most important feature is diagonal optimization, since it is not done during partitioning
-    // In order to optimize past obstacles even if only local optimization is considered, regions with no capacity are ignored
+    redo_diagonal_bipartitions();
+    redo_adjacent_bipartitions();
+}
 
+void region_distribution::redo_diagonal_bipartitions(){
     auto const optimize_quad_diag = [&](index_t x, index_t y){
         region::redistribute_cells(get_region(x, y), get_region(x+1, y+1));
         region::redistribute_cells(get_region(x+1, y), get_region(x, y+1));
-    };
-    auto const optimize_H = [&](index_t x, index_t y){
-        region::redistribute_cells(get_region(x, y), get_region(x+1, y));
-    };
-    auto const optimize_V = [&](index_t x, index_t y){
-        region::redistribute_cells(get_region(x, y), get_region(x, y+1));
     };
 
     // x is the fast index
@@ -372,12 +369,6 @@ void region_distribution::redo_bipartitions(){
             }
             // x even
             optimize_quad_diag(x, y);
-
-            optimize_V(x, y);
-            optimize_V(x+1, y);
-            if(x+3 == x_regions_cnt()){ // If x+2 is the last and would be skipped in the next iteration
-                optimize_V(x+2, y);
-            }
         }
     };
 
@@ -390,8 +381,15 @@ void region_distribution::redo_bipartitions(){
         // y even
         optimize_diag_on_y(y);
     }
+}
 
-    // The same for x and y optimization
+void region_distribution::redo_adjacent_bipartitions(){
+    auto const optimize_H = [&](index_t x, index_t y){
+        region::redistribute_cells(get_region(x, y), get_region(x+1, y));
+    };
+    auto const optimize_V = [&](index_t x, index_t y){
+        region::redistribute_cells(get_region(x, y), get_region(x, y+1));
+    };
 
     // x bipartitions
     for(index_t y=0; y < y_regions_cnt(); ++y){
@@ -404,8 +402,19 @@ void region_distribution::redo_bipartitions(){
             optimize_H(x, y);
         }
     }
+    // y bipartitions
+    for(index_t x=0; x < x_regions_cnt(); ++x){
+        for(index_t y=0; y+1 < y_regions_cnt(); y+=2){
+            if(y+2 < y_regions_cnt()){
+                // y odd
+                optimize_V(x, y+1);
+            }
+            // y even
+            optimize_V(x, y);
+        }
+    }
 }
- 
+
 void region_distribution::redo_multipartitions(index_t x_width, index_t y_width){
     if(x_width < 2 and y_width < 2) throw std::runtime_error("Multipartitioning requires an optimization window of 2 or more\n");
 
@@ -419,20 +428,20 @@ void region_distribution::redo_multipartitions(index_t x_width, index_t y_width)
         region::redistribute_cells(to_opt);
     };
 
-    auto const optimize_on_x = [&](index_t x){
-        for(index_t y=0; y < y_regions_cnt(); y+=y_width){
-            if(y+y_width < y_regions_cnt()){
-                reoptimize_group(x, y+y_width/2);
+    auto const optimize_on_y = [&](index_t y){
+        for(index_t x=0; x < x_regions_cnt(); x+=x_width){
+            if(x+x_width < x_regions_cnt()){
+                reoptimize_group(x+x_width/2, y);
             }
             reoptimize_group(x, y);
         }
     };
 
-    for(index_t x=0; x < x_regions_cnt(); x+=x_width){
-        if(x+x_width < x_regions_cnt()){
-            optimize_on_x(x+x_width/2);
+    for(index_t y=0; y < y_regions_cnt(); y+=y_width){
+        if(y+y_width < y_regions_cnt()){
+            optimize_on_y(y+y_width/2);
         }
-        optimize_on_x(x);
+        optimize_on_y(y);
     }
 }
 
@@ -481,6 +490,11 @@ std::vector<capacity_t>  optimize_1D(std::vector<t_elt> sources, std::vector<t_e
         }
     }; 
 
+    // Distance to the right - distance to the left
+    auto get_slope = [&](index_t src, index_t boundary){
+        return std::abs(sources[src].first - sinks[boundary+1].first) - std::abs(sources[src].first - sinks[boundary].first);
+    };
+
     capacity_t cur_abs_pos = min_abs_pos;
     index_t opt_r=0, next_r=0, first_free_r=0;
 
@@ -494,11 +508,6 @@ std::vector<capacity_t>  optimize_1D(std::vector<t_elt> sources, std::vector<t_e
         while(next_r < sinks.size() and sinks[next_r].first < sources[i].first){
             ++next_r;
         }
-
-        // Distance to the right - distance to the left
-        auto get_slope = [&](index_t src, index_t boundary){
-            return std::abs(sources[src].first - sinks[boundary+1].first) - std::abs(sources[src].first - sinks[boundary].first);
-        };
 
         if(i>0){
             for(index_t j=std::max(prev_next_r,1u)-1; j<std::min(first_free_r, opt_r); ++j){
@@ -559,7 +568,7 @@ std::vector<capacity_t>  optimize_1D(std::vector<t_elt> sources, std::vector<t_e
 
 }
 
-void region_distribution::redo_ongridlines(){
+void region_distribution::redo_line_partitions(){
     // Optimize a single line or column
     auto reg_line_optimize = [&](std::function<float_t (point<float_t>)> coord, std::vector<std::reference_wrapper<region> > regions){
 

@@ -159,10 +159,12 @@ class region_distribution{
      */
     
     // Improve bipartitions between closest non-empty neighbours
+    void redo_adjacent_bipartitions();
+    void redo_diagonal_bipartitions();
+    void redo_line_partitions();
     void redo_bipartitions();
     void redo_multipartitions(index_t x_width, index_t y_width);
     void redo_multipartitions(index_t width){ redo_multipartitions(width, width); }
-    void redo_ongridlines();
 
     // Tries to escape local minimas with long-distance moves to non-filled places
     void line_moves();
