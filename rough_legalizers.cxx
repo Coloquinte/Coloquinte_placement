@@ -264,7 +264,7 @@ void region_distribution::region::distribute_new_cells(std::vector<std::referenc
     std::vector<capacity_t> demands;
     for(auto const C : all_cells){
         for(index_t r=0; r<regions.size(); ++r){
-            costs[r].push_back(regions[r].get().distance(C) * static_cast<float_t>(C.allocated_capacity_));
+            costs[r].push_back(regions[r].get().distance(C));
         }
         demands.push_back(C.allocated_capacity_);
     }
