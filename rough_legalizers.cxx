@@ -9,6 +9,30 @@
 namespace coloquinte{
 namespace gp{
 
+void region_distribution::just_uniquify(std::vector<cell_ref> & cell_references){
+    if(cell_references.size() >= 1){
+        index_t j=0;
+        cell_ref prev_cell = cell_references[0];
+        for(auto it = cell_references.begin()+1; it != cell_references.end(); ++it){
+            if(it->index_in_list_ == prev_cell.index_in_list_){
+                prev_cell.allocated_capacity_ += it->allocated_capacity_;
+            }
+            else{
+                cell_references[j] = prev_cell;
+                ++j;
+                prev_cell = *it;
+            }
+        }
+        cell_references[j]=prev_cell;
+        cell_references.resize(j+1);
+    }
+}
+
+void region_distribution::sort_uniquify(std::vector<cell_ref> & cell_references){
+    std::sort(cell_references.begin(), cell_references.end(), [](cell_ref a, cell_ref b){ return a.index_in_list_ < b.index_in_list_; });
+    just_uniquify(cell_references);
+}
+
 void region_distribution::region::selfcheck() const{
     capacity_t total_allocated = 0;
     for(cell_ref const c : cell_references_){
@@ -39,23 +63,7 @@ void region_distribution::selfcheck() const{
 }
 
 void region_distribution::region::uniquify_references(){
-    std::sort(cell_references_.begin(), cell_references_.end(), [](cell_ref a, cell_ref b){ return a.index_in_list_ < b.index_in_list_; });
-
-    std::vector<cell_ref> new_refs;
-    if(cell_references_.size() >= 1){
-        cell_ref prev_cell = cell_references_[0];
-        for(auto it = cell_references_.begin()+1; it != cell_references_.end(); ++it){
-            if(it->index_in_list_ == prev_cell.index_in_list_){
-                prev_cell.allocated_capacity_ += it->allocated_capacity_;
-            }
-            else{
-                new_refs.push_back(prev_cell);
-                prev_cell = *it;
-            }
-        }
-        new_refs.push_back(prev_cell);
-    }
-    std::swap(cell_references_, new_refs);
+    sort_uniquify(cell_references_);
 }
 
 void region_distribution::fractions_minimization(){
@@ -258,6 +266,8 @@ void region_distribution::region::distribute_new_cells(std::vector<std::referenc
         caps.push_back(R.capacity_);
         R.cell_references_.clear();
     }
+
+    sort_uniquify(all_cells);
     std::sort(all_cells.begin(), all_cells.end(), [](cell_ref const a, cell_ref const b){ return a.allocated_capacity_ > b.allocated_capacity_ or (a.allocated_capacity_ == b.allocated_capacity_ and a.pos_.x_+a.pos_.y_ < b.pos_.x_+b.pos_.y_); });
 
     std::vector<std::vector<float_t> > costs(regions.size());
@@ -469,6 +479,7 @@ void region_distribution::redo_line_partitions(){
         // Sort the regions by coordinate
         std::sort(all_regions.begin(), all_regions.end(), [&](std::reference_wrapper<region> const a, std::reference_wrapper<region> const b){ return coord(a.get().pos_) < coord(b.get().pos_); });
         // And the cells
+        just_uniquify(all_cells);
         std::sort(all_cells.begin(), all_cells.end(), [&](cell_ref const a, cell_ref const b){ return coord(a.pos_) < coord(b.pos_); });
 
         std::vector<t1D_elt> sources, sinks;

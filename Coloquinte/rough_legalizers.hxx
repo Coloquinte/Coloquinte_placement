@@ -118,6 +118,8 @@ class region_distribution{
     private:
     // Helper functions
     region & get_region(index_t x_coord, index_t y_coord);
+    static void sort_uniquify(std::vector<cell_ref> & cell_references);
+    static void just_uniquify(std::vector<cell_ref> & cell_references);
 
     public:
     
