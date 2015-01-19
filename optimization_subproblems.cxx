@@ -121,6 +121,92 @@ std::vector<capacity_t>  optimize_1D(std::vector<t1D_elt> sources, std::vector<t
     return constraining_pos;
 }
 
+namespace{ // Anonymous namespace to hide the transportation structures
+
+class current_allocation{
+    static const index_t null_ind = std::numeric_limits<index_t>::max();
+
+    // Internal data structures
+
+    // Priority queue element to determine the source to be used between regions
+    struct movable_source{
+        index_t source;
+        float_t cost;
+        bool operator<(movable_source const o) const{
+               return cost > o.cost // Sorted by cost
+            || (cost == o.cost && source < o.source); // And by index to limit the number of fractional elements between two regions
+        }
+        movable_source(index_t s, float_t c) : source(s), cost(c) {}
+    };
+
+    // Member data
+
+    // The current state
+    std::vector<std::vector<capacity_t>  > sr_allocations; // For each region, for each source, the capacity allocated by the region
+    std::vector<std::vector<float_t> >     sr_costs;       // The costs from a region to a source
+    std::vector<capacity_t>                s_demands;      // The demands of the sources
+    std::vector<capacity_t>                r_capacities;   // The remaining capacities of the regions
+
+    // Shortest path data
+    std::vector<float_t>                   r_costs;        // The costs of allocating to a region
+    std::vector<index_t>                   r_parents;      // The parents of the regions i.e. the regions where we push sources first (or null_ind)
+    std::vector<index_t>                   r_sources;      // The source involved in these edges
+    std::vector<capacity_t>                arc_capacities; // The capacities of the edges to the parents, or of the region if no parent
+
+    // Best edges data
+    std::vector<std::vector<std::priority_queue<movable_source> > > best_interregions_costs; // What is the best source to move to go from region k1 to region k2?
+    index_t dijkstra_cnt;
+
+
+    // Helper functions
+
+    // Number of regions
+    index_t region_cnt() const{
+        assert(sr_costs.size() == sr_allocations.size());
+        return sr_costs.size();
+    }
+
+    // Update the edge between two regions
+    void update_edge(index_t r1, index_t r2);
+    // Add a source to all heaps of a region; returns if we need to update a path
+    bool add_source_to_heaps(index_t r, index_t source);
+    // Initialize the heaps of a region
+    void create_heaps(index_t reg);
+
+    // Run the shortest path algorithm to update the cost of each region
+    void dijkstra_update();
+
+    // Update the edge and returns if we need to rerun Dijkstra
+    bool push_edge(index_t reg, capacity_t flow);
+    // Updates a full path when pushing an element; returns if we need to rerun Dijkstra
+    bool push_path(index_t pushed_reg, capacity_t demanded, capacity_t & flow);
+
+    public:
+    // Add a new source to the transportation problem; should be done in decreasing order of demand to keep low complexity
+    void add_source(index_t elt_ind);
+
+    current_allocation(std::vector<capacity_t> caps, std::vector<capacity_t> demands, std::vector<std::vector<float_t> > costs)
+        :
+        sr_allocations(caps.size()),
+        sr_costs(costs),
+        s_demands(demands),
+        r_capacities(caps),
+        r_costs(caps.size(), 0.0),
+        r_parents(caps.size(), null_ind),
+        r_sources(caps.size(), null_ind),
+        arc_capacities(caps),
+        best_interregions_costs(caps.size(), std::vector<std::priority_queue<movable_source> >(caps.size())),
+        dijkstra_cnt(0)
+        {
+            assert(caps.size() > 0);
+            assert(costs.size() == caps.size());
+            dijkstra_update();
+        }
+
+    std::vector<std::vector<capacity_t> > get_allocations() const{ return sr_allocations; }
+    index_t get_iterations_cnt() const { return dijkstra_cnt; }
+};
+
 void current_allocation::update_edge(index_t r1, index_t r2){
     while(not best_interregions_costs[r1][r2].empty() and sr_allocations[r1][best_interregions_costs[r1][r2].top().source] == 0){
         best_interregions_costs[r1][r2].pop();
@@ -295,16 +381,14 @@ bool current_allocation::push_path(index_t pushed_reg, capacity_t demanded, capa
     return rerun_dijkstra;
 }
 
-void current_allocation::add_source(capacity_t demand, std::vector<float_t> const & costs){
-    index_t elt_ind = sr_allocations[0].size();
-
+void current_allocation::add_source(index_t elt_ind){ //capacity_t demand, std::vector<float_t> const & costs){
     for(index_t i=0; i<region_cnt(); ++i){
-        assert(sr_costs[i].size() == elt_ind);
-        assert(sr_allocations[i].size() == elt_ind);
-        sr_costs[i].push_back(costs[i]);
         sr_allocations[i].push_back(0);
     }
+
     bool need_rerun = false;
+    capacity_t demand = s_demands[elt_ind];
+
     while(demand > 0){
         // In case we modified the structures earlier
         if(need_rerun){
@@ -317,9 +401,9 @@ void current_allocation::add_source(capacity_t demand, std::vector<float_t> cons
         float_t best_cost = std::numeric_limits<float_t>::infinity();
         for(index_t reg=0; reg<region_cnt(); ++reg){
             // Find the region which gets the source
-            if(r_costs[reg] + costs[reg] < best_cost){
+            if(r_costs[reg] + sr_costs[reg][elt_ind] < best_cost){
                 best_reg = reg;
-                best_cost = r_costs[reg] + costs[reg];
+                best_cost = r_costs[reg] + sr_costs[reg][elt_ind];
             }
         }
         if(best_reg == null_ind){ throw std::runtime_error("No reachable region found\n"); }
@@ -342,6 +426,18 @@ void current_allocation::add_source(capacity_t demand, std::vector<float_t> cons
     // We leave a clean set with correct paths for the next iteration
     if(need_rerun)
         dijkstra_update();
+}
+
+} // End anonymous namespace
+
+std::vector<std::vector<capacity_t> > solve_transport(std::vector<capacity_t> const & capacities, std::vector<capacity_t> const & demands, std::vector<std::vector<float_t> > const & costs){
+    current_allocation transporter(capacities, demands, costs);
+
+    for(index_t i=0; i<demands.size(); ++i){
+        transporter.add_source(i);
+    }
+
+    return transporter.get_allocations();
 }
 
 } // Namespace coloquinte

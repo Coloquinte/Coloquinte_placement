@@ -260,15 +260,17 @@ void region_distribution::region::distribute_new_cells(std::vector<std::referenc
     }
     std::sort(all_cells.begin(), all_cells.end(), [](cell_ref const a, cell_ref const b){ return a.allocated_capacity_ > b.allocated_capacity_ or (a.allocated_capacity_ == b.allocated_capacity_ and a.pos_.x_+a.pos_.y_ < b.pos_.x_+b.pos_.y_); });
 
-    current_allocation transporter(caps);
+    std::vector<std::vector<float_t> > costs(regions.size());
+    std::vector<capacity_t> demands;
     for(auto const C : all_cells){
-        std::vector<float_t> costs;
-        for(region_distribution::region & R : regions){
-            costs.push_back(R.distance(C) * static_cast<float_t>(C.allocated_capacity_));
+        for(index_t r=0; r<regions.size(); ++r){
+            costs[r].push_back(regions[r].get().distance(C) * static_cast<float_t>(C.allocated_capacity_));
         }
-        transporter.add_source(C.allocated_capacity_, costs);
+        demands.push_back(C.allocated_capacity_);
     }
-    auto res = transporter.get_allocations();
+
+    std::vector<std::vector<capacity_t> > res = solve_transport(caps, demands, costs);
+
     assert(res.size() == regions.size());
     for(index_t i=0; i<regions.size(); ++i){
         assert(res[i].size() == all_cells.size());
