@@ -1,6 +1,6 @@
 
 #include "Coloquinte/detailed.hxx"
-#include "Coloquinte/ordered_single_row.hxx"
+#include "Coloquinte/optimization_subproblems.hxx"
 
 #include <lemon/smart_graph.h>
 #include <lemon/network_simplex.h>
@@ -698,7 +698,8 @@ void swap_in_rows(netlist const & circuit, detailed_placement & pl, index_t rang
                     OSRP_cell = get_first_standard_cell(pl, r, OSRP_cell); // Go to the next group
                 }
                 else{ // We optimized with the maximum number of cells: just advance one cell and optimize again
-                    OSRP_cell = cells[1];
+                    assert(cells.size() == range);
+                    OSRP_cell = cells[range/2];
                 }
             }
         } // Iteration on the entire row

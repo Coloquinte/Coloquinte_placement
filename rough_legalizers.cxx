@@ -1,7 +1,6 @@
 
 #include "Coloquinte/rough_legalizers.hxx"
-#include "Coloquinte/transportation.hxx"
-#include "Coloquinte/ordered_single_row.hxx"
+#include "Coloquinte/optimization_subproblems.hxx"
 
 #include <algorithm>
 #include <cmath>
@@ -445,128 +444,6 @@ void region_distribution::redo_multipartitions(index_t x_width, index_t y_width)
     }
 }
 
-namespace{
-
-typedef std::pair<float_t, capacity_t> t_elt;
-
-std::vector<capacity_t>  optimize_1D(std::vector<t_elt> sources, std::vector<t_elt> sinks){
-    /* Description of the algorithm:
-     *
-     *    For each cell, put it in its optimal region or the last region where a cell is if there is no space
-     *    Push the changes in the derivative of the cost function to a priority queue; those changes occur
-     *          when evicting the preceding cell from its current region
-     *          when moving to a non-full region
-     *    While the new cell would occupy region which was still free, get the new slope (derivative)
-     *    and push all preceding cell until this region is freed or the slope is 0
-     */
-
-    struct bound{
-        capacity_t pos;
-        float_t slope_diff;
-        bool operator<(bound const o) const{ return pos < o.pos; }
-    };
-
-    std::priority_queue<bound> bounds;
-    std::vector<capacity_t> constraining_pos;
-    std::vector<capacity_t> prev_cap(1, 0), prev_dem(1, 0);
-    for(auto const s : sinks){
-        prev_cap.push_back(s.second + prev_cap.back());
-    }
-    for(auto const s : sources){
-        prev_dem.push_back(s.second + prev_dem.back());
-    }
-    assert(prev_cap.back() >= prev_dem.back());
-
-    const capacity_t min_abs_pos = 0, max_abs_pos = prev_cap.back() - prev_dem.back();
-    assert(min_abs_pos <= max_abs_pos);
-
-    auto push_bound = [&](capacity_t p, float_t s){
-        assert(s >= -0.0);
-        if(p > min_abs_pos){
-            bound B;
-            B.pos = p;
-            B.slope_diff = s;
-            bounds.push(B);
-        }
-    }; 
-
-    // Distance to the right - distance to the left
-    auto get_slope = [&](index_t src, index_t boundary){
-        return std::abs(sources[src].first - sinks[boundary+1].first) - std::abs(sources[src].first - sinks[boundary].first);
-    };
-
-    capacity_t cur_abs_pos = min_abs_pos;
-    index_t opt_r=0, next_r=0, first_free_r=0;
-
-    for(index_t i=0; i<sources.size(); ++i){
-        // Update the optimal region
-        while(opt_r+1 < sinks.size() and 0.5 * (sinks[opt_r].first + sinks[opt_r+1].first) < sources[i].first){
-            ++opt_r;
-        }
-        // Update the next region
-        index_t prev_next_r = next_r;
-        while(next_r < sinks.size() and sinks[next_r].first < sources[i].first){
-            ++next_r;
-        }
-
-        if(i>0){
-            for(index_t j=std::max(prev_next_r,1u)-1; j<std::min(first_free_r, opt_r); ++j){
-                assert(get_slope(i,j) <= get_slope(i-1,j));
-                push_bound(prev_cap[j+1] - prev_dem[i], get_slope(i-1, j) - get_slope(i,j));
-            }
-        }
-        // Add the bounds due to crossing the boundaries alone
-        for(index_t j=first_free_r; j<opt_r; ++j){
-            assert(get_slope(i,j) <= 0.0);
-            push_bound(prev_cap[j+1] - prev_dem[i], -get_slope(i, j));
-        }
-
-        index_t dest_reg = std::max(first_free_r, opt_r);
-        assert(dest_reg < sinks.size());
-        capacity_t this_abs_pos = std::max(cur_abs_pos, prev_cap[dest_reg] - prev_dem[i]); // Just after the previous cell or at the beginning of the destination region
-
-        while(dest_reg+1 < sinks.size() and this_abs_pos > std::max(prev_cap[dest_reg+1] - prev_dem[i+1], min_abs_pos)){ // Absolute position that wouldn't make the cell fit in the region, and we are not in the last region yet
-            capacity_t end_pos = std::max(prev_cap[dest_reg+1] - prev_dem[i+1], min_abs_pos);
-
-            float_t add_slope = get_slope(i, dest_reg);
-            float_t slope = add_slope;
-
-            while(not bounds.empty() and slope >= 0.0 and bounds.top().pos > end_pos){
-                this_abs_pos = bounds.top().pos;
-                slope -= bounds.top().slope_diff;
-                bounds.pop();
-            }
-            if(slope >= 0.0){ // We still push: the cell completely escapes the region
-                this_abs_pos = end_pos;
-                push_bound(end_pos, add_slope-slope);
-            }
-            else{ // Ok, absorbed the whole slope: push what remains and we still occupy the next region
-                push_bound(this_abs_pos, -slope);
-                ++dest_reg;
-            }
-        }
-        first_free_r = dest_reg;
-        cur_abs_pos = this_abs_pos;
-        constraining_pos.push_back(this_abs_pos);
-    }
-
-    assert(constraining_pos.size() == sources.size());
-
-    if(not constraining_pos.empty()){
-        // Calculate the final constraining_pos
-        constraining_pos.back() = std::min(max_abs_pos, constraining_pos.back());
-    }
-
-    std::partial_sum(constraining_pos.rbegin(), constraining_pos.rend(), constraining_pos.rbegin(), [](capacity_t a, capacity_t b)->capacity_t{ return std::min(a, b); });
-
-    for(index_t i=0; i<constraining_pos.size(); ++i){
-        constraining_pos[i] += prev_dem[i];
-    }
-
-    return constraining_pos;
-}
-
-}
 
 void region_distribution::redo_line_partitions(){
     // Optimize a single line or column
@@ -592,19 +469,18 @@ void region_distribution::redo_line_partitions(){
         // And the cells
         std::sort(all_cells.begin(), all_cells.end(), [&](cell_ref const a, cell_ref const b){ return coord(a.pos_) < coord(b.pos_); });
 
-        std::vector<t_elt> sources, sinks;
+        std::vector<t1D_elt> sources, sinks;
         for(cell_ref const c : all_cells){
-            sources.push_back(t_elt(coord(c.pos_), c.allocated_capacity_));
+            sources.push_back(t1D_elt(coord(c.pos_), c.allocated_capacity_));
         }
         for(region & reg_ref : all_regions){
-            sinks.push_back(t_elt(coord(reg_ref.pos_), reg_ref.capacity()));
+            sinks.push_back(t1D_elt(coord(reg_ref.pos_), reg_ref.capacity()));
         }
-
 
         std::vector<capacity_t> const positions = optimize_1D(sources, sinks);
 
         std::vector<capacity_t> prev_cap(1, 0);
-        for(t_elt e: sinks){
+        for(t1D_elt e: sinks){
             assert(e.second > 0);
             prev_cap.push_back(prev_cap.back() + e.second);
         }

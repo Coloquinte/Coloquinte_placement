@@ -22,15 +22,14 @@
                                            Coloquinte/netlist.hxx
                                            Coloquinte/solvers.hxx
                                            Coloquinte/rough_legalizers.hxx
-                                           Coloquinte/transportation.hxx
                                            Coloquinte/detailed.hxx
                                            Coloquinte/topologies.hxx
-                                           Coloquinte/ordered_single_row.hxx
+                                           Coloquinte/optimization_subproblems.hxx
                        )	           
                    set ( cpps              circuit.cxx
                                            rough_legalizers.cxx
                                            solvers.cxx
-                                           transportation.cxx
+                                           optimization_subproblems.cxx
                                            orientation.cxx
                                            detailed.cxx
                                            topologies.cxx
