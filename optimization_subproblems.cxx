@@ -4,7 +4,7 @@
 
 namespace coloquinte{
 
-std::vector<capacity_t>  optimize_1D(std::vector<t1D_elt> sources, std::vector<t1D_elt> sinks){
+std::vector<capacity_t>  transport_1D(std::vector<t1D_elt> sources, std::vector<t1D_elt> sinks){
     /* Description of the algorithm:
      *
      *    For each cell, put it in its optimal region or the last region where a cell is if there is no space
@@ -430,7 +430,7 @@ void current_allocation::add_source(index_t elt_ind){ //capacity_t demand, std::
 
 } // End anonymous namespace
 
-std::vector<std::vector<capacity_t> > solve_transport(std::vector<capacity_t> const & capacities, std::vector<capacity_t> const & demands, std::vector<std::vector<float_t> > const & costs){
+std::vector<std::vector<capacity_t> > transport_generic(std::vector<capacity_t> const & capacities, std::vector<capacity_t> const & demands, std::vector<std::vector<float_t> > const & costs){
     current_allocation transporter(capacities, demands, costs);
 
     for(index_t i=0; i<demands.size(); ++i){

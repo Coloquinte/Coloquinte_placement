@@ -12,7 +12,9 @@ namespace coloquinte{
 
 typedef std::pair<float_t, capacity_t> t1D_elt;
 
-std::vector<capacity_t>  optimize_1D(std::vector<t1D_elt> sources, std::vector<t1D_elt> sinks);
+std::vector<capacity_t>  transport_1D(std::vector<t1D_elt> sources, std::vector<t1D_elt> sinks);
+std::vector<std::vector<capacity_t> > transport_convex(std::vector<capacity_t> const & capacities, std::vector<capacity_t> const & demands, std::vector<std::vector<float_t> > const & costs);
+std::vector<std::vector<capacity_t> > transport_generic(std::vector<capacity_t> const & capacities, std::vector<capacity_t> const & demands, std::vector<std::vector<float_t> > const & costs);
 
 template<typename T>
 struct legalizable_task{
@@ -218,8 +220,6 @@ inline std::vector<std::pair<index_t, T> > OSRP_leg<T>::get_placement() const{
     }
     return ret;
 }
-
-std::vector<std::vector<capacity_t> > solve_transport(std::vector<capacity_t> const & capacities, std::vector<capacity_t> const & demands, std::vector<std::vector<float_t> > const & costs);
 
 }
 #endif

@@ -279,7 +279,7 @@ void region_distribution::region::distribute_new_cells(std::vector<std::referenc
         demands.push_back(C.allocated_capacity_);
     }
 
-    std::vector<std::vector<capacity_t> > res = solve_transport(caps, demands, costs);
+    std::vector<std::vector<capacity_t> > res = transport_generic(caps, demands, costs);
 
     assert(res.size() == regions.size());
     for(index_t i=0; i<regions.size(); ++i){
@@ -456,7 +456,6 @@ void region_distribution::redo_multipartitions(index_t x_width, index_t y_width)
     }
 }
 
-
 void region_distribution::redo_line_partitions(){
     // Optimize a single line or column
     auto reg_line_optimize = [&](std::function<float_t (point<float_t>)> coord, std::vector<std::reference_wrapper<region> > regions){
@@ -490,7 +489,7 @@ void region_distribution::redo_line_partitions(){
             sinks.push_back(t1D_elt(coord(reg_ref.pos_), reg_ref.capacity()));
         }
 
-        std::vector<capacity_t> const positions = optimize_1D(sources, sinks);
+        std::vector<capacity_t> const positions = transport_1D(sources, sinks);
 
         std::vector<capacity_t> prev_cap(1, 0);
         for(t1D_elt e: sinks){
@@ -542,6 +541,40 @@ void region_distribution::redo_line_partitions(){
         }
         reg_line_optimize([](point<float_t> p){ return p.y_; }, regs);
     }
+}
+
+void region_distribution::redo_diag_partitions(index_t len){
+    if(x_regions_cnt() <= 1 or y_regions_cnt() <= 1) return;
+
+    auto const reoptimize_rdiag = [&](index_t x_b, index_t y_b){
+        index_t max_delta = std::min(x_regions_cnt()-x_b, y_regions_cnt()-y_b);
+        for(index_t delta=0; delta+len/2<max_delta; delta += len/2){
+            std::vector<std::reference_wrapper<region> > to_opt;
+            for(index_t m=0; m < std::min(max_delta-delta, len); ++m){
+                to_opt.push_back(std::reference_wrapper<region>(get_region(x_b+delta+m, y_b+delta+m)));
+            }
+            region::redistribute_cells(to_opt);
+        }
+    };
+    auto const reoptimize_ldiag = [&](index_t x_b, index_t y_b){
+        index_t max_delta = std::min(x_regions_cnt()-x_b, y_b+1);
+        for(index_t delta=0; delta+len/2<max_delta; delta += len/2){
+            std::vector<std::reference_wrapper<region> > to_opt;
+            for(index_t m=0; m < std::min(max_delta-delta, len); ++m){
+                to_opt.push_back(std::reference_wrapper<region>(get_region(x_b+delta+m, y_b-delta-m)));
+            }
+            region::redistribute_cells(to_opt);
+        }
+    };
+
+    for(index_t y=y_regions_cnt()-2; y >= 1; --y)
+        reoptimize_rdiag(0, y);
+    for(index_t x=0; x+1<x_regions_cnt(); ++x)
+        reoptimize_rdiag(x, 0);
+    for(index_t y=1; y+1<y_regions_cnt(); ++y)
+        reoptimize_ldiag(0, y);
+    for(index_t x=0; x+1<x_regions_cnt(); ++x)
+        reoptimize_ldiag(x, y_regions_cnt()-1);
 }
 
 region_distribution::region_distribution(box<int_t> placement_area, std::vector<movable_cell> all_cells, std::vector<fixed_cell> all_obstacles) : x_regions_cnt_(1), y_regions_cnt_(1), placement_area_(placement_area), cell_list_(all_cells){

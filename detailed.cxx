@@ -407,7 +407,7 @@ inline index_t get_next_cell_on_row(detailed_placement const & pl, index_t c){
     return ret;
 }
 
-// Optimizes an ordered sequence of standard cells on the same row, returns the cost and the correspon
+// Optimizes an ordered sequence of standard cells on the same row, returns the cost and the corresponding positions
 inline float_t optimize_convex_sequence(netlist const & circuit, detailed_placement const & pl, std::vector<index_t> const & cells, std::vector<int_t> & positions, int_t lower_lim, int_t upper_lim){
 
     struct order_gettr{
