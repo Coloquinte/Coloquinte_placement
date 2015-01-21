@@ -113,7 +113,7 @@ void detailed_placement::selfcheck() const{
     }
 }
 
-void optimize_positions(netlist const & circuit, detailed_placement & pl){
+void optimize_on_topology(netlist const & circuit, detailed_placement & pl){
     // Solves a minimum cost flow problem to optimize the placement at fixed topology
     // Concretely, it means aligning the pins to minimize the wirelength
     // It uses the Lemon network simplex solver from the Coin-OR initiative, which should scale well up to hundred of thousands of cells
@@ -545,7 +545,7 @@ inline float_t optimize_convex_sequence(netlist const & circuit, detailed_placem
 } // End anonymous namespace
 
 
-void optimize_swaps(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent){
+void swaps_global(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent){
     for(index_t main_row = 0; main_row < pl.row_cnt(); ++main_row){
 
         for(index_t other_row = main_row+1; other_row <= std::min(pl.row_cnt()-1, main_row+row_extent) ; ++other_row){
@@ -582,7 +582,7 @@ void optimize_swaps(netlist const & circuit, detailed_placement & pl, index_t ro
     pl.selfcheck();
 }
 
-void optimize_single_rows(netlist const & circuit, detailed_placement & pl){
+void OSRP_convex(netlist const & circuit, detailed_placement & pl){
     for(index_t r=0; r<pl.row_cnt(); ++r){
         index_t OSRP_cell = get_first_cell_on_row(pl, r);
 
@@ -618,7 +618,7 @@ void optimize_single_rows(netlist const & circuit, detailed_placement & pl){
     pl.selfcheck();
 }
 
-void swap_in_rows(netlist const & circuit, detailed_placement & pl, index_t range){
+void swaps_row(netlist const & circuit, detailed_placement & pl, index_t range){
     assert(range >= 2);
 
     for(index_t r=0; r<pl.row_cnt(); ++r){
