@@ -6,6 +6,178 @@
 namespace coloquinte{
 namespace gp{
 
+void opt_function::line_search(std::vector<float_t> & pos, std::vector<float_t> const & grad, float_t init_step, float_t inf_step){
+    assert(pos.size() == grad.size());
+    float_t const resphi = 2.0f - 0.5f * (1.0f + std::sqrt(5.0f));
+
+    auto get_val = [&](float_t step)->float_t{
+        std::vector<float_t> cur_vec(pos.size());
+        for(index_t i=0; i<pos.size(); ++i){
+            cur_vec[i] = pos[i] + step * grad[i];
+        }
+        return get_value(cur_vec);
+    };
+
+    // The current steps
+    float_t a=0.0, b=resphi*init_step, c=init_step;
+    // The current values
+    //float_t av=get_val(a), bv=get_val(b), cv=get_val(c);
+    float_t bv = get_val(b);
+
+    while(c-a > inf_step){
+        float_t x;
+        if (c - b > b - a)
+            x = b + resphi * (c - b);
+        else
+            x = b - resphi * (b - a);
+
+        float_t xv = get_val(x);
+
+        if (xv < bv) {
+            if (c - b > b - a){
+                a=b;// av=bv;
+                b=x; bv=xv;
+            }
+            else{
+                c=b;// cv=bv;
+                b=x; bv=xv;
+            }
+        }
+        else {
+            if (c - b > b - a){
+                c=x;// cv=xv;
+            }
+            else{
+                a=x;// av=xv;
+            }
+        }
+    }
+
+    for(index_t i=0; i<pos.size(); ++i){
+        pos[i] += 0.5 * (a+c) * grad[i];
+    }
+}
+
+float_t composite_function::get_value(std::vector<float_t> const & pos){
+    float_t sum = 0.0;
+    for(index_t i=0; i<functions.size(); ++i){
+        sum += functions[i]->get_value(pos);
+    }
+    return sum;
+}
+
+std::vector<float_t> composite_function::get_gradient(std::vector<float_t> const & pos){
+    if(functions.empty()) return std::vector<float_t>(pos.size(), 0.0);
+
+    std::vector<float_t> grad = functions[0]->get_gradient(pos);
+    for(index_t i=1; i<functions.size(); ++i){
+        auto gr = functions[i]->get_gradient(pos);
+        for(index_t j=0; j<grad.size(); ++j){
+            grad[j] += gr[j];
+        }
+    }
+    return grad;
+}
+
+float_t smoothed_disruption::get_value(std::vector<float_t> const & pos){
+    assert(vals_.size() == pos.size());
+    float_t sum=0.0;
+    for(index_t i=0; i<vals_.size(); ++i){
+        float_t dist = std::abs(pos[i] - vals_[i].position);
+        float_t saturated = dist - 0.5 * vals_[i].saturation_distance;
+        float_t not_saturated = 0.5 * dist * dist /vals_[i].saturation_distance;
+        sum += vals_[i].saturation_slope * (dist >= vals_[i].saturation_distance ? saturated : not_saturated);
+    }
+    return sum;
+}
+
+std::vector<float_t> smoothed_disruption::get_gradient(std::vector<float_t> const & pos){
+    assert(vals_.size() == pos.size());
+
+    std::vector<float_t> grad(vals_.size(), 0.0);
+    for(index_t i=0; i<vals_.size(); ++i){
+        float_t diff = vals_[i].position - pos[i];
+        float_t const sat = vals_[i].saturation_distance;
+
+        grad[i] = vals_[i].saturation_slope * (diff >= sat ? 1.0 : (diff <= -sat ? - 1.0 : diff / sat));
+    }
+    return grad;
+}
+
+float_t sum_of_HPWLs::get_value(std::vector<float_t> const & pos){
+    float_t sum = 0.0;
+    for(index_t n=0; n+1<net_limits_.size(); ++n){
+        float_t mn = nets_[n].min_,
+                mx = nets_[n].max_;
+        for(index_t i=net_limits_[n]; i<net_limits_[n+1]; ++i){
+            float_t cur = pos[BB_pins_[i].ind_];
+            mn = std::min(mn, cur + BB_pins_[i].min_);
+            mx = std::max(mx, cur + BB_pins_[i].max_);
+        }
+        sum += nets_[n].weight_ * (mx - mn);
+    }
+    return sum;
+}
+
+std::vector<float_t> sum_of_HPWLs::get_gradient(std::vector<float_t> const & pos){
+    std::vector<float_t> grad(pos.size(), 0.0);
+    index_t const null_ind = std::numeric_limits<index_t>::max();
+
+    for(index_t n=0; n+1<net_limits_.size(); ++n){
+        float_t mn = nets_[n].min_,
+                mx = nets_[n].max_;
+        index_t mn_ind=null_ind,
+                mx_ind=null_ind;
+
+        for(index_t i=net_limits_[n]; i<net_limits_[n+1]; ++i){
+            index_t cur_ind = BB_pins_[i].ind_;
+            float_t mn_pos = pos[cur_ind] + BB_pins_[i].min_;
+            float_t mx_pos = pos[cur_ind] + BB_pins_[i].max_;
+
+            if(mn_pos < mn){
+                mn = mn_pos;
+                mn_ind = cur_ind;
+            }
+            if(mx_pos > mx){
+                mx = mx_pos;
+                mx_ind = cur_ind;
+            }
+        }
+
+        grad[mn_ind] += nets_[n].weight_;
+        grad[mx_ind] -= nets_[n].weight_;
+    }
+    return grad;
+}
+
+std::vector<float_t> sum_of_HPWLs::get_gradient(std::vector<float_t> const & pos, float_t smoothing_param){
+    std::vector<float_t> grad(pos.size(), 0.0);
+    
+    for(index_t n=0; n+1<net_limits_.size(); ++n){
+        float_t mn = nets_[n].min_,
+                mx = nets_[n].max_;
+        for(index_t i=net_limits_[n]; i<net_limits_[n+1]; ++i){
+            float_t cur = pos[BB_pins_[i].ind_];
+            mn = std::min(mn, cur + BB_pins_[i].min_);
+            mx = std::max(mx, cur + BB_pins_[i].max_);
+        }
+        for(index_t i=net_limits_[n]; i<net_limits_[n+1]; ++i){
+            index_t cur_ind = BB_pins_[i].ind_;
+            float_t cur = pos[cur_ind];
+
+            float_t mn_dist = (cur + BB_pins_[i].min_) - mn;
+            float_t mx_dist = (cur + BB_pins_[i].max_) - mx;
+
+            float_t mn_grad = std::min(0.0f, (mn_dist - smoothing_param) / smoothing_param);
+            float_t mx_grad = std::max(0.0f, (smoothing_param - mx_dist) / smoothing_param);
+
+            grad[cur_ind] += nets_[n].weight_ * mn_grad;
+            grad[cur_ind] += nets_[n].weight_ * mx_grad;
+        }
+    }
+    return grad;
+}
+
 linear_system linear_system::operator+(linear_system const & o) const{
     if(o.internal_size() != internal_size()){ throw std::runtime_error("Mismatched system sizes"); }
     linear_system ret(target_.size() + o.target_.size() - internal_size(), internal_size());

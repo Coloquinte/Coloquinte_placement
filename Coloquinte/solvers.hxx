@@ -5,6 +5,7 @@
 #include "common.hxx"
 
 #include <vector>
+#include <memory>
 
 namespace coloquinte{
 namespace gp{
@@ -78,6 +79,63 @@ class linear_system{
     void add_variables(index_t cnt){ target_.resize(target_.size() + cnt, 0.0); }
 
     std::vector<float_t> solve_CG(std::vector<float_t> guess, index_t nbr_iter);
+};
+
+struct opt_function{
+    virtual float_t get_value(std::vector<float_t> const & pos) = 0;
+    virtual std::vector<float_t> get_gradient(std::vector<float_t> const & pos) = 0;
+
+    void line_search(std::vector<float_t> & pos, std::vector<float_t> const & grad, float_t init_step, float_t inf_step);
+};
+
+struct composite_function : opt_function{
+    std::vector<std::shared_ptr<opt_function> > functions;
+
+    virtual float_t get_value(std::vector<float_t> const & pos);
+    virtual std::vector<float_t> get_gradient(std::vector<float_t> const & pos);
+};
+
+struct sum_of_HPWLs : opt_function{
+    struct BB_pin{
+        index_t ind_;
+        float_t min_, max_;
+    };
+    struct BB_net{
+        float_t weight_, min_, max_;
+    };
+
+    std::vector<BB_pin> BB_pins_;
+    std::vector<index_t> net_limits_;
+    std::vector<BB_net> nets_;
+
+    virtual float_t get_value(std::vector<float_t> const & pos);
+    virtual std::vector<float_t> get_gradient(std::vector<float_t> const & pos);
+    virtual std::vector<float_t> get_gradient(std::vector<float_t> const & pos, float_t smoothing_param);
+};
+
+struct smoothed_sum_of_HPWLs : opt_function{
+    std::shared_ptr<sum_of_HPWLs> ptr;
+    float_t smoothing_param;
+
+    virtual float_t get_value(std::vector<float_t> const & pos){
+        return ptr->get_value(pos);
+    }
+    virtual std::vector<float_t> get_gradient(std::vector<float_t> const & pos){
+        return ptr->get_gradient(pos, smoothing_param);
+    }
+
+    smoothed_sum_of_HPWLs(std::shared_ptr<sum_of_HPWLs> fct, float_t s) : ptr(fct), smoothing_param(s){}
+};
+
+struct smoothed_disruption : opt_function{
+    struct elt{
+        float_t position, saturation_slope, saturation_distance;
+    };
+
+    std::vector<elt> vals_;
+
+    virtual float_t get_value(std::vector<float_t> const & pos);
+    virtual std::vector<float_t> get_gradient(std::vector<float_t> const & pos);
 };
 
 } // namespace gp
