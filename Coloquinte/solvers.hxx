@@ -130,6 +130,7 @@ struct smoothed_sum_of_HPWLs : opt_function{
 struct smoothed_disruption : opt_function{
     struct elt{
         float_t position, saturation_slope, saturation_distance;
+        elt(float_t p, float_t s, float_t d) : position(p), saturation_slope(s), saturation_distance(d){}
     };
 
     std::vector<elt> vals_;

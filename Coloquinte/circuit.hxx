@@ -58,6 +58,10 @@ void zero_orientations(netlist const & circuit, placement_t & pl);
 void spread_orientations(netlist const & circuit, placement_t & pl);
 void round_orientations(netlist const & circuit, placement_t & pl);
 
+// Non-linear optimization functions
+point<sum_of_HPWLs> get_HPWL_functions(netlist const & circuit, placement_t const & pl);
+point<smoothed_disruption> get_disruption_functions(netlist const & circuit, placement_t const & UB_pl, float_t force, float_t sat_distance);
+
 } // namespace gp
 } // namespace coloquinte
 

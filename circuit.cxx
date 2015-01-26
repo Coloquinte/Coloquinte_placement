@@ -4,6 +4,81 @@
 namespace coloquinte{
 namespace gp{
 
+point<sum_of_HPWLs> get_HPWL_functions(netlist const & circuit, placement_t const & pl){
+    point<sum_of_HPWLs> ret;
+
+    auto add_pins = [](std::vector<pin_1D> pins, sum_of_HPWLs & to_update, float_t weight){
+        auto get_elt = [](pin_1D a)->sum_of_HPWLs::BB_pin{
+            assert(a.movable);
+            sum_of_HPWLs::BB_pin ret;
+            ret.ind_ = a.cell_ind;
+            ret.min_ = a.offs;
+            ret.max_ = a.offs;
+            return ret;
+        };
+
+        float_t const INF = std::numeric_limits<float_t>::infinity();
+
+        to_update.net_limits_.push_back(to_update.net_limits_.back());
+        sum_of_HPWLs::BB_net res;
+        res.weight_ = weight;
+        res.min_ =  INF;
+        res.max_ = -INF;
+
+        if(not pins.empty()){
+            std::sort(pins.begin(), pins.end(), [](pin_1D a, pin_1D b){ return a.cell_ind < b.cell_ind; });
+
+            for(index_t i=0; i<pins.size(); ++i){
+                if(not pins[i].movable){
+                    res.min_ = std::min(res.min_, pins[i].pos);
+                    res.max_ = std::min(res.max_, pins[i].pos);
+                }
+            }
+
+            auto prev_elt = get_elt(pins[0]);
+            for(index_t i=1; i<pins.size(); ++i){
+                if(pins[i].cell_ind == prev_elt.ind_){
+                    prev_elt.min_ = std::min(prev_elt.min_, pins[i].offs);
+                    prev_elt.max_ = std::max(prev_elt.max_, pins[i].offs);
+                }
+                else{
+                    if(pins[i-1].movable){
+                        to_update.BB_pins_.push_back(prev_elt);
+                    }
+                    prev_elt = get_elt(pins[i]);
+                }
+            }
+            if(pins.back().movable){
+                to_update.BB_pins_.push_back(prev_elt);
+            }
+        }
+        to_update.nets_.push_back(res);
+        to_update.net_limits_.push_back(to_update.BB_pins_.size());
+    };
+
+    ret.x_.net_limits_.push_back(0);
+    ret.y_.net_limits_.push_back(0);
+    for(index_t n=0; n<circuit.net_cnt(); ++n){
+        auto pins = get_pins_1D(circuit, pl, n);
+        add_pins(pins.x_, ret.x_, circuit.get_net(n).weight);
+        add_pins(pins.y_, ret.y_, circuit.get_net(n).weight);
+    }
+    return ret;
+}
+
+point<smoothed_disruption> get_disruption_functions(netlist const & circuit, placement_t const & UB_pl, float_t force, float_t sat_distance){
+    point<smoothed_disruption> ret;
+
+    std::vector<float_t> scaling = get_area_scales(circuit);
+    for(index_t i=0; i<pl.cell_cnt(); ++i){
+        smoothed_disruption::elt x_elt(pl.positions_[i].x_, force * scaling[i], sat_distance),
+                                 y_elt(pl.positions_[i].y_, force * scaling[i], sat_distance);
+        ret.x_.vals_.push_back(x_elt);
+        ret.y_.vals_.push_back(y_elt);
+    }
+    return ret;
+}
+
 void add_force(pin_1D const p1, pin_1D const p2, linear_system & L, float_t force){
     if(p1.movable && p2.movable){
         L.add_force(
