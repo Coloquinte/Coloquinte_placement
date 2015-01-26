@@ -14,10 +14,13 @@ float_t const INF = std::numeric_limits<float_t>::infinity();
 inline void opt_orient(netlist const & circuit, placement_t & pl, std::function<float_t & (point<float_t> &)> coor, mask_t FLIPPABLE){
     std::stack<index_t> opt_cells;
     for(index_t cell_ind = 0; cell_ind < circuit.cell_cnt(); ++cell_ind){
-        if( (circuit.get_cell(cell_ind).attributes & FLIPPABLE) != 0) opt_cells.push(cell_ind);
+        if( (circuit.get_cell(cell_ind).attributes & FLIPPABLE) != 0)
+            opt_cells.push(cell_ind);
     }
     while(not opt_cells.empty()){
         index_t cell_ind = opt_cells.top(); opt_cells.pop();
+        assert((circuit.get_cell(cell_ind).attributes & FLIPPABLE) != 0);
+
         // What is the current orientation?
         float_t old_orientation = coor(pl.orientations_[cell_ind]);
         float_t pos = coor(pl.positions_[cell_ind]);
@@ -76,8 +79,9 @@ inline void opt_orient(netlist const & circuit, placement_t & pl, std::function<
         if(coor(pl.orientations_[cell_ind]) != old_orientation){
             std::sort(extreme_elements.begin(), extreme_elements.end());
             extreme_elements.resize(std::distance(extreme_elements.begin(), std::unique(extreme_elements.begin(), extreme_elements.end())));
-            for(index_t j : extreme_elements){
-                opt_cells.push(j);
+            for(index_t extreme_cell : extreme_elements){
+                if( (circuit.get_cell(extreme_cell).attributes & FLIPPABLE) != 0)
+                    opt_cells.push(extreme_cell);
             }
         }
     }
@@ -91,17 +95,6 @@ inline void spread_orient(netlist const & circuit, placement_t & pl, std::functi
         index_t min_ind=null_ind, max_ind=null_ind;
         for(netlist::pin_t p : circuit.get_net(n)){
             if( (circuit.get_cell(p.cell_ind).attributes & FLIPPABLE) != 0){
-                float_t pos = coor(pl.positions_[p.cell_ind]) + coor(pl.orientations_[p.cell_ind]) * coor(p.offset);
-                if(pos < min_pos){
-                    min_pos = pos;
-                    min_ind = null_ind;
-                }
-                if(pos > max_pos){
-                    max_pos = pos;
-                    max_ind = null_ind;
-                }
-            }
-            else{
                 float_t pos = coor(pl.positions_[p.cell_ind]);
                 if(pos < min_pos){
                     min_pos = pos;
@@ -112,6 +105,17 @@ inline void spread_orient(netlist const & circuit, placement_t & pl, std::functi
                     max_pos = pos;
                     max_ind = p.cell_ind;
                     max_offs = coor(p.offset);
+                }
+            }
+            else{
+                float_t pos = coor(pl.positions_[p.cell_ind]) + coor(pl.orientations_[p.cell_ind]) * coor(p.offset);
+                if(pos < min_pos){
+                    min_pos = pos;
+                    min_ind = null_ind;
+                }
+                if(pos > max_pos){
+                    max_pos = pos;
+                    max_ind = null_ind;
                 }
             }
         }
