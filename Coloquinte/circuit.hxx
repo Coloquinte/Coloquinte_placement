@@ -21,6 +21,8 @@ struct placement_t{
         assert(positions_.size() == orientations_.size());
         return positions_.size();
     }
+
+    void selfcheck() const;
 };
 
 point<linear_system> empty_linear_systems(netlist const & circuit, placement_t const & pl);

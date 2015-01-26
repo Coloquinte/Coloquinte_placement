@@ -39,6 +39,8 @@ inline std::vector<pin_2D>         get_pins_2D(netlist const & circuit, placemen
     for(auto p : circuit.get_net(net_ind)){
         point<float_t> offs = static_cast<point<float_t> >(p.offset) * pl.orientations_[p.cell_ind];
         point<float_t> pos  = static_cast<point<float_t> >(offs)     + pl.positions_[p.cell_ind];
+        assert(std::isfinite(offs.x_) and std::isfinite(offs.y_));
+        assert(std::isfinite(pos.x_) and std::isfinite(pos.y_));
 
         bool movable = (circuit.get_cell(p.cell_ind).attributes & XMovable) != 0 and (circuit.get_cell(p.cell_ind).attributes & YMovable) != 0;
         ret.push_back(pin_2D(p.cell_ind, pos, offs, movable));
@@ -51,6 +53,8 @@ inline point<std::vector<pin_1D> > get_pins_1D(netlist const & circuit, placemen
     for(auto p : circuit.get_net(net_ind)){
         point<float_t> offs = static_cast<point<float_t> >(p.offset) * pl.orientations_[p.cell_ind];
         point<float_t> pos  = static_cast<point<float_t> >(offs)     + pl.positions_[p.cell_ind];
+        assert(std::isfinite(offs.x_) and std::isfinite(offs.y_));
+        assert(std::isfinite(pos.x_) and std::isfinite(pos.y_));
 
         bool x_movable = (circuit.get_cell(p.cell_ind).attributes & XMovable) != 0;
         bool y_movable = (circuit.get_cell(p.cell_ind).attributes & YMovable) != 0;

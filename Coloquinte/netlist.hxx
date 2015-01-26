@@ -164,14 +164,12 @@ class netlist{
 inline netlist::netlist(std::vector<temporary_cell> cells, std::vector<temporary_net> nets, std::vector<temporary_pin> all_pins){
     struct extended_pin : public temporary_pin{
         index_t pin_index;
-
         extended_pin(temporary_pin const p) : temporary_pin(p){} 
     };
     std::vector<extended_pin> pins;
     for(temporary_pin const p : all_pins){
         pins.push_back(extended_pin(p));
     }
-
 
     cell_limits_.resize(cells.size()+1);
     net_limits_.resize(nets.size()+1);
@@ -197,7 +195,6 @@ inline netlist::netlist(std::vector<temporary_cell> cells, std::vector<temporary
         cell_internal_mapping_[i] = i;
     }
 
-
     std::sort(pins.begin(), pins.end(), [](temporary_pin const a, temporary_pin const b){ return a.net_ind < b.net_ind; });
     for(index_t n=0, p=0; n<nets.size(); ++n){
         net_weights_[n] = nets[n].weight;
@@ -212,8 +209,8 @@ inline netlist::netlist(std::vector<temporary_cell> cells, std::vector<temporary
     }
     net_limits_.back() = pins.size();
 
-
     std::sort(pins.begin(), pins.end(), [](temporary_pin const a, temporary_pin const b){ return a.cell_ind < b.cell_ind; });
+
     for(index_t c=0, p=0; c<cells.size(); ++c){
         cell_areas_[c] = cells[c].area;
         cell_attributes_[c] = cells[c].attributes;
@@ -227,23 +224,6 @@ inline netlist::netlist(std::vector<temporary_cell> cells, std::vector<temporary
         }
     }
     cell_limits_.back() = pins.size();
-}
-
-inline void netlist::selfcheck() const{
-    index_t cell_cnt = cell_areas_.size();
-    assert(cell_cnt+1 == cell_limits_.size());
-    assert(cell_cnt == cell_sizes_.size());
-    assert(cell_cnt == cell_attributes_.size());
-    assert(cell_cnt == cell_internal_mapping_.size());
-
-    index_t net_cnt = net_weights_.size();
-    assert(net_cnt+1 == net_limits_.size());
-    assert(net_cnt == net_internal_mapping_.size());
-
-    index_t pin_cnt = pin_offsets_.size();
-    assert(pin_cnt == cell_indexes_.size());
-    assert(pin_cnt == pin_indexes_.size());
-    assert(pin_cnt == net_indexes_.size());
 }
 
 } // namespace coloquinte

@@ -706,7 +706,9 @@ std::vector<region_distribution::movable_cell> region_distribution::export_sprea
     std::vector<movable_cell> ret;
     for(index_t i=0; i<cell_list_.size(); ++i){
         movable_cell C = cell_list_[i];
+        assert(C.demand_ > 0);
         C.pos_ = ( static_cast<float_t>(1.0) / static_cast<float_t>(C.demand_) ) * weighted_pos[i];
+        assert(std::isfinite(C.pos_.x_) and std::isfinite(C.pos_.y_));
         ret.push_back(C);
     }
     return ret;
@@ -739,7 +741,8 @@ std::vector<region_distribution::movable_cell> region_distribution::export_sprea
             x_leg.push(C);
         auto x_pl = x_leg.get_placement();
         for(index_t i=0; i<n; ++i){
-            weighted_pos[x_pl[i].first].x_ += (x_pl[i].second + 0.5 * x_cells[i].width) * static_cast<float_t>(x_cells[i].width * total_capacity / (surface.x_max_ - surface.x_min_));
+            assert(std::isfinite(x_pl[i].second));
+            weighted_pos[x_pl[i].first].x_ += (x_pl[i].second + 0.5f * x_cells[i].width) * static_cast<float_t>(x_cells[i].width * total_capacity / (surface.x_max_ - surface.x_min_));
         }
 
         std::sort(y_cells.begin(), y_cells.end());
@@ -749,7 +752,8 @@ std::vector<region_distribution::movable_cell> region_distribution::export_sprea
             y_leg.push(C);
         auto y_pl = y_leg.get_placement();
         for(index_t i=0; i<n; ++i){
-            weighted_pos[y_pl[i].first].y_ += (y_pl[i].second + 0.5 * y_cells[i].width) * static_cast<float_t>(y_cells[i].width * total_capacity / (surface.y_max_ - surface.y_min_));
+            assert(std::isfinite(y_pl[i].second));
+            weighted_pos[y_pl[i].first].y_ += (y_pl[i].second + 0.5f * y_cells[i].width) * static_cast<float_t>(y_cells[i].width * total_capacity / (surface.y_max_ - surface.y_min_));
         }
 
     }
@@ -757,7 +761,9 @@ std::vector<region_distribution::movable_cell> region_distribution::export_sprea
     std::vector<movable_cell> ret;
     for(index_t i=0; i<cell_list_.size(); ++i){
         movable_cell C = cell_list_[i];
+        assert(C.demand_ > 0);
         C.pos_ = ( static_cast<float_t>(1.0) / static_cast<float_t>(C.demand_) ) * weighted_pos[i];
+        assert(std::isfinite(C.pos_.x_) and std::isfinite(C.pos_.y_));
         ret.push_back(C);
     }
     return ret;
