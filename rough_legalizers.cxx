@@ -755,14 +755,13 @@ std::vector<region_distribution::movable_cell> region_distribution::export_sprea
             assert(std::isfinite(y_pl[i].second));
             weighted_pos[y_pl[i].first].y_ += (y_pl[i].second + 0.5f * y_cells[i].width) * static_cast<float_t>(y_cells[i].width * total_capacity / (surface.y_max_ - surface.y_min_));
         }
-
     }
 
     std::vector<movable_cell> ret;
     for(index_t i=0; i<cell_list_.size(); ++i){
         movable_cell C = cell_list_[i];
         assert(C.demand_ > 0);
-        C.pos_ = ( static_cast<float_t>(1.0) / static_cast<float_t>(C.demand_) ) * weighted_pos[i];
+        C.pos_ = ( 1.0f / static_cast<float_t>(C.demand_) ) * weighted_pos[i];
         assert(std::isfinite(C.pos_.x_) and std::isfinite(C.pos_.y_));
         ret.push_back(C);
     }

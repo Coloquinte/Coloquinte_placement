@@ -37,8 +37,12 @@ inline float_t dist(pin_2D const a, pin_2D const b){
 inline std::vector<pin_2D>         get_pins_2D(netlist const & circuit, placement_t const & pl, index_t net_ind){
     std::vector<pin_2D> ret;
     for(auto p : circuit.get_net(net_ind)){
+        assert(std::isfinite(pl.positions_[p.cell_ind].x_) and std::isfinite(pl.positions_[p.cell_ind].y_));
+        assert(std::isfinite(pl.orientations_[p.cell_ind].x_) and std::isfinite(pl.orientations_[p.cell_ind].y_));
+
         point<float_t> offs = static_cast<point<float_t> >(p.offset) * pl.orientations_[p.cell_ind];
         point<float_t> pos  = static_cast<point<float_t> >(offs)     + pl.positions_[p.cell_ind];
+
         assert(std::isfinite(offs.x_) and std::isfinite(offs.y_));
         assert(std::isfinite(pos.x_) and std::isfinite(pos.y_));
 
@@ -51,8 +55,12 @@ inline std::vector<pin_2D>         get_pins_2D(netlist const & circuit, placemen
 inline point<std::vector<pin_1D> > get_pins_1D(netlist const & circuit, placement_t const & pl, index_t net_ind){
     point<std::vector<pin_1D> > ret;
     for(auto p : circuit.get_net(net_ind)){
+        assert(std::isfinite(pl.positions_[p.cell_ind].x_) and std::isfinite(pl.positions_[p.cell_ind].y_));
+        assert(std::isfinite(pl.orientations_[p.cell_ind].x_) and std::isfinite(pl.orientations_[p.cell_ind].y_));
+
         point<float_t> offs = static_cast<point<float_t> >(p.offset) * pl.orientations_[p.cell_ind];
         point<float_t> pos  = static_cast<point<float_t> >(offs)     + pl.positions_[p.cell_ind];
+
         assert(std::isfinite(offs.x_) and std::isfinite(offs.y_));
         assert(std::isfinite(pos.x_) and std::isfinite(pos.y_));
 
