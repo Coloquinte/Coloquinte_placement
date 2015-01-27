@@ -2,7 +2,132 @@
 #include "Coloquinte/topologies.hxx"
 
 namespace coloquinte{
+
+void netlist::selfcheck() const{
+    index_t cell_cnt = cell_areas_.size();
+    assert(cell_cnt+1 == cell_limits_.size());
+    assert(cell_cnt == cell_sizes_.size());
+    assert(cell_cnt == cell_attributes_.size());
+    assert(cell_cnt == cell_internal_mapping_.size());
+
+    index_t net_cnt = net_weights_.size();
+    assert(net_cnt+1 == net_limits_.size());
+    assert(net_cnt == net_internal_mapping_.size());
+
+    index_t pin_cnt = pin_offsets_.size();
+    assert(pin_cnt == cell_indexes_.size());
+    assert(pin_cnt == pin_indexes_.size());
+    assert(pin_cnt == net_indexes_.size());
+
+    for(auto const p : pin_offsets_){
+        assert(std::isfinite(p.x_) and std::isfinite(p.y_));
+    }
+}
+
 namespace gp{
+
+namespace{ // Anonymous namespace for helper functions
+
+void add_force(pin_1D const p1, pin_1D const p2, linear_system & L, float_t force){
+    if(p1.movable && p2.movable){
+        L.add_force(
+            force,
+            p1.cell_ind, p2.cell_ind,
+            p1.offs,     p2.offs
+        );
+    }
+    else if(p1.movable){
+        L.add_fixed_force(
+            force,
+            p1.cell_ind,
+            p2.pos,
+            p1.offs
+        );
+    }
+    else if(p2.movable){
+        L.add_fixed_force(
+            force,
+            p2.cell_ind,
+            p1.pos,
+            p2.offs
+        );
+    }
+}
+
+void add_force(pin_1D const p1, pin_1D const p2, linear_system & L, float_t tol, float_t scale){
+    add_force(p1, p2, L, scale/std::max(tol, std::abs(p2.pos-p1.pos)));
+}
+
+void get_HPWLF(std::vector<pin_1D> const & pins, linear_system & L, float_t tol){
+    if(pins.size() >= 2){
+        auto min_elt = std::min_element(pins.begin(), pins.end()), max_elt = std::max_element(pins.begin(), pins.end());
+
+        for(auto it = pins.begin(); it != pins.end(); ++it){
+            // Just comparing the iterator is poorer due to redundancies in the benchmarks!
+            if(it != min_elt){
+                add_force(*it, *min_elt, L, tol, 1.0/(pins.size()-1));
+                if(it != max_elt){ // Hopefully only one connexion between the min and max pins
+                    add_force(*it, *max_elt, L, tol, 1.0/(pins.size()-1));
+                }
+            }
+        }
+    }
+}
+
+void get_HPWLR(std::vector<pin_1D> const & pins, linear_system & L, float_t tol){
+    std::vector<pin_1D> sorted_pins = pins;
+    std::sort(sorted_pins.begin(), sorted_pins.end());
+    // Pins are connected to the pin two places away
+    for(index_t i=0; i+2<sorted_pins.size(); ++i){
+        add_force(sorted_pins[i], sorted_pins[i+2], L, tol, 0.5);
+    }
+    // The extreme pins are connected with their direct neighbour too
+    if(sorted_pins.size() > 1){
+        add_force(sorted_pins[0], sorted_pins[1], L, tol, 0.5);
+        add_force(sorted_pins[sorted_pins.size()-1], sorted_pins[sorted_pins.size()-2], L, tol, 0.5);
+    }
+}
+
+void get_star(std::vector<pin_1D> const & pins, linear_system & L, float_t tol, index_t star_index){
+    // The net is empty, but we still populate the diagonal to avoid divide by zeros
+    if(pins.size() < 2){
+        L.add_triplet(star_index, star_index, 1.0);
+        return;
+    }
+
+    for(pin_1D p : pins){
+        pin_1D star_pin = pin_1D(star_index, std::numeric_limits<float_t>::quiet_NaN(), 0.0, true);
+        add_force(p, star_pin, L, 1.0/pins.size());
+    }
+}
+
+void get_clique(std::vector<pin_1D> const & pins, linear_system & L, float_t tol){
+    // Pins are connected to the pin two places away
+    for(index_t i=0; i+1<pins.size(); ++i){
+        for(index_t j=i+1; j<pins.size(); ++j){
+            add_force(pins[i], pins[j], L, tol, 1.0/(pins.size()-1));
+        }
+    }
+}
+
+// Intended to be used by pulling forces to adapt the forces to the cell's areas
+std::vector<float_t> get_area_scales(netlist const & circuit){
+    std::vector<float_t> ret(circuit.cell_cnt());
+    capacity_t int_tot_area = 0;
+    for(index_t i=0; i<circuit.cell_cnt(); ++i){
+        capacity_t A = circuit.get_cell(i).area;
+        ret[i] = static_cast<float_t>(A);
+        int_tot_area += A;
+    }
+    float_t average_area = static_cast<float_t>(int_tot_area) / circuit.cell_cnt();
+    for(index_t i=0; i<circuit.cell_cnt(); ++i){
+        ret[i] /= average_area;
+    }
+    return ret;
+}
+
+} // End anonymous namespace
+
 
 point<sum_of_HPWLs> get_HPWL_functions(netlist const & circuit, placement_t const & pl){
     point<sum_of_HPWLs> ret;
@@ -70,43 +195,22 @@ point<smoothed_disruption> get_disruption_functions(netlist const & circuit, pla
     point<smoothed_disruption> ret;
 
     std::vector<float_t> scaling = get_area_scales(circuit);
-    for(index_t i=0; i<pl.cell_cnt(); ++i){
-        smoothed_disruption::elt x_elt(pl.positions_[i].x_, force * scaling[i], sat_distance),
-                                 y_elt(pl.positions_[i].y_, force * scaling[i], sat_distance);
+    for(index_t i=0; i<UB_pl.cell_cnt(); ++i){
+        smoothed_disruption::elt x_elt(UB_pl.positions_[i].x_, force * scaling[i], sat_distance),
+                                 y_elt(UB_pl.positions_[i].y_, force * scaling[i], sat_distance);
         ret.x_.vals_.push_back(x_elt);
         ret.y_.vals_.push_back(y_elt);
     }
     return ret;
 }
 
-void add_force(pin_1D const p1, pin_1D const p2, linear_system & L, float_t force){
-    if(p1.movable && p2.movable){
-        L.add_force(
-            force,
-            p1.cell_ind, p2.cell_ind,
-            p1.offs,     p2.offs
-        );
+void placement_t::selfcheck() const{
+    for(point<float_t> const p : positions_){
+        assert(std::isfinite(p.x_) and std::isfinite(p.y_));
     }
-    else if(p1.movable){
-        L.add_fixed_force(
-            force,
-            p1.cell_ind,
-            p2.pos,
-            p1.offs
-        );
+    for(point<float_t> const p : orientations_){
+        assert(std::isfinite(p.x_) and std::isfinite(p.y_));
     }
-    else if(p2.movable){
-        L.add_fixed_force(
-            force,
-            p2.cell_ind,
-            p1.pos,
-            p2.offs
-        );
-    }
-}
-
-void add_force(pin_1D const p1, pin_1D const p2, linear_system & L, float_t tol, float_t scale){
-    add_force(p1, p2, L, scale/std::max(tol, std::abs(p2.pos-p1.pos)));
 }
 
 point<linear_system> empty_linear_systems(netlist const & circuit, placement_t const & pl){
@@ -125,62 +229,6 @@ point<linear_system> empty_linear_systems(netlist const & circuit, placement_t c
 
     return ret;
 }
-
-namespace{ // Anonymous namespace for helper functions
-
-void get_HPWLF(std::vector<pin_1D> const & pins, linear_system & L, float_t tol){
-    if(pins.size() >= 2){
-        auto min_elt = std::min_element(pins.begin(), pins.end()), max_elt = std::max_element(pins.begin(), pins.end());
-
-        for(auto it = pins.begin(); it != pins.end(); ++it){
-            // Just comparing the iterator is poorer due to redundancies in the benchmarks!
-            if(it != min_elt){
-                add_force(*it, *min_elt, L, tol, 1.0/(pins.size()-1));
-                if(it != max_elt){ // Hopefully only one connexion between the min and max pins
-                    add_force(*it, *max_elt, L, tol, 1.0/(pins.size()-1));
-                }
-            }
-        }
-    }
-}
-
-void get_HPWLR(std::vector<pin_1D> const & pins, linear_system & L, float_t tol){
-    std::vector<pin_1D> sorted_pins = pins;
-    std::sort(sorted_pins.begin(), sorted_pins.end());
-    // Pins are connected to the pin two places away
-    for(index_t i=0; i+2<sorted_pins.size(); ++i){
-        add_force(sorted_pins[i], sorted_pins[i+2], L, tol, 0.5);
-    }
-    // The extreme pins are connected with their direct neighbour too
-    if(sorted_pins.size() > 1){
-        add_force(sorted_pins[0], sorted_pins[1], L, tol, 0.5);
-        add_force(sorted_pins[sorted_pins.size()-1], sorted_pins[sorted_pins.size()-2], L, tol, 0.5);
-    }
-}
-
-void get_star(std::vector<pin_1D> const & pins, linear_system & L, float_t tol, index_t star_index){
-    // The net is empty, but we still populate the diagonal to avoid divide by zeros
-    if(pins.size() < 2){
-        L.add_triplet(star_index, star_index, 1.0);
-        return;
-    }
-
-    for(pin_1D p : pins){
-        pin_1D star_pin = pin_1D(star_index, std::numeric_limits<float_t>::quiet_NaN(), 0.0, true);
-        add_force(p, star_pin, L, 1.0/pins.size());
-    }
-}
-
-void get_clique(std::vector<pin_1D> const & pins, linear_system & L, float_t tol){
-    // Pins are connected to the pin two places away
-    for(index_t i=0; i+1<pins.size(); ++i){
-        for(index_t j=i+1; j<pins.size(); ++j){
-            add_force(pins[i], pins[j], L, tol, 1.0/(pins.size()-1));
-        }
-    }
-}
-
-} // End anonymous namespace
 
 point<linear_system> get_HPWLF_linear_system (netlist const & circuit, placement_t const & pl, float_t tol, index_t min_s, index_t max_s){
     point<linear_system> L = empty_linear_systems(circuit, pl);
@@ -290,7 +338,6 @@ point<linear_system> get_RSMT_linear_system(netlist const & circuit, placement_t
     return L;
 }
 
-
 float_t get_HPWL_wirelength(netlist const & circuit, placement_t const & pl){
     float_t sum = 0.0;
     for(index_t i=0; i<circuit.net_cnt(); ++i){
@@ -358,21 +405,6 @@ void get_result(netlist const & circuit, placement_t & pl, point<linear_system> 
     }
 }
 
-// Intended to be used by pulling forces to adapt the forces to the cell's areas
-std::vector<float_t> get_area_scales(netlist const & circuit){
-    std::vector<float_t> ret(circuit.cell_cnt());
-    capacity_t int_tot_area = 0;
-    for(index_t i=0; i<circuit.cell_cnt(); ++i){
-        capacity_t A = circuit.get_cell(i).area;
-        ret[i] = static_cast<float_t>(A);
-        int_tot_area += A;
-    }
-    float_t average_area = static_cast<float_t>(int_tot_area) / circuit.cell_cnt();
-    for(index_t i=0; i<circuit.cell_cnt(); ++i){
-        ret[i] /= average_area;
-    }
-    return ret;
-}
 
 point<linear_system> get_pulling_forces (netlist const & circuit, placement_t const & pl, float_t typical_distance){
     point<linear_system> L = empty_linear_systems(circuit, pl);
