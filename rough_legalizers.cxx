@@ -721,6 +721,7 @@ std::vector<region_distribution::movable_cell> region_distribution::export_sprea
         index_t n = R.cell_references_.size();
         float_t total_capacity = static_cast<float_t>(R.capacity());
         box<float_t> surface = static_cast<box<float_t> >(R.surface_);
+        assert(surface.x_max_ > surface.x_min_ and surface.y_max_ > surface.y_min_);
 
         std::vector<legalizable_task<float_t> > x_cells, y_cells;
 
