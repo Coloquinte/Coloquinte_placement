@@ -32,7 +32,7 @@ The exact legalization places one cell at a time but is able to move previous ce
 The detailed placement optimizations look for topology (i.e. cell ordering) modifications, and optimize the positions for a given topology.
 They use specialized algorithms for position optimizations - most of them are not published yet -, and generally brute-force for topology modifications.
 
-### Runtimes
+## Runtime
 
 For ~300,000 cells and a single core at 2 GHz, the runtimes are approximately (depending on solution quality):
   * 10-30s per global placement iteration
@@ -40,7 +40,7 @@ For ~300,000 cells and a single core at 2 GHz, the runtimes are approximately (d
   * 3s to obtain a fully legal placement
   * 400s to perform detailed placement
 
-A typical placement run will usually feature 50 to 200 global placement iterations
+A typical placement run will usually feature 50 to 200 global placement iterations. Note that global placement and rough legalization can use multiple cores.
 
 
 
