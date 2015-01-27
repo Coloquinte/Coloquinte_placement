@@ -1,18 +1,17 @@
 
 #include "Coloquinte/optimization_subproblems.hxx"
 
-
 namespace coloquinte{
 
 std::vector<capacity_t>  transport_1D(std::vector<t1D_elt> sources, std::vector<t1D_elt> sinks){
     /* Description of the algorithm:
      *
-     *    For each cell, put it in its optimal region or the last region where a cell is if there is no space
-     *    Push the changes in the derivative of the cost function to a priority queue; those changes occur
-     *          when evicting the preceding cell from its current region
+     *    For each cell, put it in its optimal region or the last region where a cell is if there is no space in it
+     *    Push all changes in the derivative of the cost function to a priority queue; those changes occur
+     *          when evicting the preceding cell from a region (most such changes are 0 and not considered, hence the complexity)
      *          when moving to a non-full region
-     *    While the new cell would occupy region which was still free, get the new slope (derivative)
-     *    and push all preceding cell until this region is freed or the slope is 0
+     *    While the new cell overlaps with a new region, get the new slope (derivative) at this point
+     *    and push all preceding cell until this region is freed or the slope becomes 0 (in which case the new region is now occupied)
      */
 
     struct bound{
@@ -30,6 +29,7 @@ std::vector<capacity_t>  transport_1D(std::vector<t1D_elt> sources, std::vector<
     for(auto const s : sources){
         prev_dem.push_back(s.second + prev_dem.back());
     }
+    // The sinks have enough capacity to hold the whole demand
     assert(prev_cap.back() >= prev_dem.back());
 
     const capacity_t min_abs_pos = 0, max_abs_pos = prev_cap.back() - prev_dem.back();
@@ -47,6 +47,8 @@ std::vector<capacity_t>  transport_1D(std::vector<t1D_elt> sources, std::vector<
 
     // Distance to the right - distance to the left
     auto get_slope = [&](index_t src, index_t boundary){
+        assert(boundary+1 < sinks.size());
+        assert(src < sources.size());
         return std::abs(sources[src].first - sinks[boundary+1].first) - std::abs(sources[src].first - sinks[boundary].first);
     };
 
@@ -55,17 +57,25 @@ std::vector<capacity_t>  transport_1D(std::vector<t1D_elt> sources, std::vector<
 
     for(index_t i=0; i<sources.size(); ++i){
         // Update the optimal region
-        while(opt_r+1 < sinks.size() and 0.5 * (sinks[opt_r].first + sinks[opt_r+1].first) < sources[i].first){
+        while(opt_r+1 < sinks.size() and 0.5 * (sinks[opt_r].first + sinks[opt_r+1].first) <= sources[i].first){
             ++opt_r;
         }
         // Update the next region
         index_t prev_next_r = next_r;
-        while(next_r < sinks.size() and sinks[next_r].first < sources[i].first){
+        while(next_r < sinks.size() and sinks[next_r].first <= sources[i].first){
             ++next_r;
         }
 
+        index_t dest_reg = std::max(first_free_r, opt_r);
+        assert(dest_reg < sinks.size());
+
         if(i>0){
-            for(index_t j=std::max(prev_next_r,1u)-1; j<std::min(first_free_r, opt_r); ++j){
+            // Push bounds due to changing the source crossing the boundary j/j+1
+            // Linear amortized complexity accross all sources (next_r grows)
+            // get_slope(i-1, j) - get_slope(i, j) == 0 if j >= next_r
+            // get_slope(i-1, j) - get_slope(i, j) == 0 if j < prev_next_r-1
+
+            for(index_t j=std::max(prev_next_r,1u)-1; j<std::min(first_free_r, next_r+1); ++j){
                 assert(get_slope(i,j) <= get_slope(i-1,j));
                 push_bound(prev_cap[j+1] - prev_dem[i], get_slope(i-1, j) - get_slope(i,j));
             }
@@ -76,8 +86,6 @@ std::vector<capacity_t>  transport_1D(std::vector<t1D_elt> sources, std::vector<
             push_bound(prev_cap[j+1] - prev_dem[i], -get_slope(i, j));
         }
 
-        index_t dest_reg = std::max(first_free_r, opt_r);
-        assert(dest_reg < sinks.size());
         capacity_t this_abs_pos = std::max(cur_abs_pos, prev_cap[dest_reg] - prev_dem[i]); // Just after the previous cell or at the beginning of the destination region
 
         while(dest_reg+1 < sinks.size() and this_abs_pos > std::max(prev_cap[dest_reg+1] - prev_dem[i+1], min_abs_pos)){ // Absolute position that wouldn't make the cell fit in the region, and we are not in the last region yet
@@ -106,7 +114,6 @@ std::vector<capacity_t>  transport_1D(std::vector<t1D_elt> sources, std::vector<
     }
 
     assert(constraining_pos.size() == sources.size());
-
     if(not constraining_pos.empty()){
         // Calculate the final constraining_pos
         constraining_pos.back() = std::min(max_abs_pos, constraining_pos.back());

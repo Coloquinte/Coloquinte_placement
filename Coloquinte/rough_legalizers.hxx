@@ -224,12 +224,8 @@ inline capacity_t region_distribution::region::allocated_capacity() const{
 }
 inline index_t region_distribution::region::cell_cnt() const{ return cell_references_.size(); }
 
-inline float_t pt_distance(point<float_t> const a, point<float_t> const b){
-    float_t manhattan = std::abs(a.x_ - b.x_) + std::abs(a.y_ - b.y_);
-    return manhattan * (manhattan + (float) 10000.0);
-}
 inline float_t region_distribution::region::distance(region_distribution::cell_ref const & C) const{
-    //return pt_distance(pos_, C.pos_);
+    //return std::abs(pos_.x_ - C.pos_.x_) + std::abs(pos_.y_ - C.pos_.y_);
     float_t manhattan = std::max(static_cast<float_t>(0.0), std::max(C.pos_.x_ - surface_.x_max_, surface_.x_min_ - C.pos_.x_))
                       + std::max(static_cast<float_t>(0.0), std::max(C.pos_.y_ - surface_.y_max_, surface_.y_min_ - C.pos_.y_));
     return manhattan * (1.0 + manhattan * 0.0001);
