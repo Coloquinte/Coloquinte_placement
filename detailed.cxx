@@ -722,6 +722,14 @@ void swaps_row(netlist const & circuit, detailed_placement & pl, index_t range){
     pl.selfcheck();
 }
 
+void row_compatible_orientation(netlist const & circuit, detailed_placement & pl, bool first_row_orient){
+    for(index_t c=0; c<circuit.cell_cnt(); ++c){
+        if( (circuit.get_cell(c).attributes & YFlippable) != 0 and pl.cells_[c].height == 1){
+            pl.cells_[c].y_orientation = (pl.cells_[c].row % 2 != 0) ^ first_row_orient;
+        }
+    }
+}
+
 } // namespace dp
 } // namespace coloquinte
 

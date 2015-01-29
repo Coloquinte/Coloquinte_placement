@@ -65,6 +65,8 @@ void OSRP_convex(netlist const & circuit, detailed_placement & pl);
 void OSRP_nonconvex(netlist const & circuit, detailed_placement & pl);
 void optimize_on_topology(netlist const & circuit, detailed_placement & pl);
 
+void row_compatible_orientation(netlist const & circuit, detailed_placement & pl, bool first_row_orient);
+
 } // namespace dp
 } // namespace coloquinte
 
