@@ -306,9 +306,11 @@ void get_result(netlist const & circuit, placement_t & pl, point<linear_system> 
     }
     for(index_t i=0; i<pl.cell_cnt(); ++i){
         if( (circuit.get_cell(i).attributes & XMovable) != 0){
+            assert(std::isfinite(x_sol[i]));
             pl.positions_[i].x_ = x_sol[i];
         }
         if( (circuit.get_cell(i).attributes & YMovable) != 0){
+            assert(std::isfinite(y_sol[i]));
             pl.positions_[i].y_ = y_sol[i];
         }
     }
