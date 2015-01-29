@@ -86,12 +86,13 @@ std::vector<capacity_t>  transport_1D(std::vector<t1D_elt> sources, std::vector<
             push_bound(prev_cap[j+1] - prev_dem[i], -get_slope(i, j));
         }
 
-        capacity_t this_abs_pos = std::max(cur_abs_pos, prev_cap[dest_reg] - prev_dem[i]); // Just after the previous cell or at the beginning of the destination region
+        first_free_r = std::max(first_free_r, opt_r);
+        capacity_t this_abs_pos = std::max(cur_abs_pos, prev_cap[first_free_r] - prev_dem[i]); // Just after the previous cell or at the beginning of the destination region
 
-        while(dest_reg+1 < sinks.size() and this_abs_pos > std::max(prev_cap[dest_reg+1] - prev_dem[i+1], min_abs_pos)){ // Absolute position that wouldn't make the cell fit in the region, and we are not in the last region yet
-            capacity_t end_pos = std::max(prev_cap[dest_reg+1] - prev_dem[i+1], min_abs_pos);
+        while(first_free_r+1 < sinks.size() and this_abs_pos > std::max(prev_cap[first_free_r+1] - prev_dem[i+1], min_abs_pos)){ // Absolute position that wouldn't make the cell fit in the region, and we are not in the last region yet
+            capacity_t end_pos = std::max(prev_cap[first_free_r+1] - prev_dem[i+1], min_abs_pos);
 
-            float_t add_slope = get_slope(i, dest_reg);
+            float_t add_slope = get_slope(i, first_free_r);
             float_t slope = add_slope;
 
             while(not bounds.empty() and slope >= 0.0 and bounds.top().pos > end_pos){
@@ -105,10 +106,9 @@ std::vector<capacity_t>  transport_1D(std::vector<t1D_elt> sources, std::vector<
             }
             else{ // Ok, absorbed the whole slope: push what remains and we still occupy the next region
                 push_bound(this_abs_pos, -slope);
-                ++dest_reg;
+                ++first_free_r;
             }
         }
-        first_free_r = dest_reg;
         cur_abs_pos = this_abs_pos;
         constraining_pos.push_back(this_abs_pos);
     }
