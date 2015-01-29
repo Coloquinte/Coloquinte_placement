@@ -277,15 +277,29 @@ std::vector<float> csr_matrix::solve_CG(std::vector<float> const & goal, std::ve
     for(uint32_t i=0; i<n; ++i){
         r[i] = goal[i] - r[i];
         preconditioner[i] = 1.0/diag[i];
+        assert(std::isfinite(preconditioner[i]));
         z[i] = preconditioner[i] * r[i];
         p[i] = z[i];
     }
 
     float cross_norm = dot_prod<16>(r, z);
+    assert(std::isfinite(cross_norm));
+    float_t const epsilon = std::numeric_limits<float_t>::min();
+
     float start_norm = cross_norm;
     for(uint32_t k=0; k < max_iter; ++k){
         mul_res = mul(p);
-        float alpha = cross_norm / dot_prod<16>(p, mul_res);
+
+        float_t pr_prod = dot_prod<16>(p, mul_res);
+        float_t alpha = cross_norm / pr_prod;
+
+        if(
+            not std::isfinite(cross_norm) or not std::isfinite(alpha) or not std::isfinite(pr_prod)
+            or cross_norm <= epsilon or alpha <= epsilon or pr_prod <= epsilon
+            ){
+            break;
+        }
+
         // Update the result
         for(uint32_t i=0; i<n; ++i){
             x[i] = x[i] + alpha * p[i];

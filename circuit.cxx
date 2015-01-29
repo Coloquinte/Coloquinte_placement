@@ -69,11 +69,19 @@ point<linear_system> empty_linear_systems(netlist const & circuit, placement_t c
     point<linear_system> ret = point<linear_system>(linear_system(circuit.cell_cnt()), linear_system(circuit.cell_cnt()));
 
     for(index_t i=0; i<circuit.cell_cnt(); ++i){
-        if( (XMovable & circuit.get_cell(i).attributes) == 0){
+        bool found_true_net=false;
+        for(auto p : circuit.get_cell(i)){
+            if(circuit.get_net(p.net_ind).pin_cnt > 1){
+                found_true_net = true;
+                break;
+            }
+        }
+
+        if( (XMovable & circuit.get_cell(i).attributes) == 0 or not found_true_net){
             ret.x_.add_triplet(i, i, 1.0);
             ret.x_.add_doublet(i, pl.positions_[i].x_);
         }
-        if( (YMovable & circuit.get_cell(i).attributes) == 0){
+        if( (YMovable & circuit.get_cell(i).attributes) == 0 or not found_true_net){
             ret.y_.add_triplet(i, i, 1.0);
             ret.y_.add_doublet(i, pl.positions_[i].y_);
         }
@@ -306,9 +314,11 @@ void get_result(netlist const & circuit, placement_t & pl, point<linear_system> 
     }
     for(index_t i=0; i<pl.cell_cnt(); ++i){
         if( (circuit.get_cell(i).attributes & XMovable) != 0){
+            assert(std::isfinite(x_sol[i]));
             pl.positions_[i].x_ = x_sol[i];
         }
         if( (circuit.get_cell(i).attributes & YMovable) != 0){
+            assert(std::isfinite(y_sol[i]));
             pl.positions_[i].y_ = y_sol[i];
         }
     }
