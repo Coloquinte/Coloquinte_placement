@@ -382,7 +382,7 @@ bool try_swap(netlist const & circuit, detailed_placement & pl, index_t c1, inde
     }
 }
 
-inline index_t get_first_standard_cell(detailed_placement const & pl, index_t r, index_t c){
+inline index_t get_first_standard_cell(detailed_placement const & pl, index_t c, index_t r){
     while(c != null_ind and pl.cells_[c].height != 1){
         index_t next_c = pl.neighbours_[pl.neighbour_index(c, r)].second;
         assert(c != next_c);
@@ -394,17 +394,17 @@ inline index_t get_first_standard_cell(detailed_placement const & pl, index_t r,
 
 inline index_t get_first_cell_on_row(detailed_placement const & pl, index_t r){
     index_t c = pl.row_first_cells_[r];
-    return get_first_standard_cell(pl, r, c);
+    return get_first_standard_cell(pl, c, r);
 }
 
-inline index_t get_next_cell_on_row(detailed_placement const & pl, index_t c){
-    assert(pl.cells_[c].height == 1);
-    index_t next_c = pl.neighbours_[pl.cells_[c].neighbours_begin].second;
-    assert(next_c != c);
-    index_t r = pl.cells_[c].row;
-    index_t ret = get_first_standard_cell(pl, r, next_c);
-    assert(ret != c);
-    return ret;
+inline index_t get_next_cell_on_row(detailed_placement const & pl, index_t c, index_t r){
+    do{
+        index_t next_c = pl.neighbours_[pl.neighbour_index(c, r)].second;
+        assert(c != next_c);
+        c = next_c;
+    }while(c != null_ind and pl.cells_[c].height != 1);
+    assert(c == null_ind or pl.cells_[c].row == r);
+    return c;
 }
 
 struct net_properties{
@@ -564,7 +564,7 @@ void swaps_global(netlist const & circuit, detailed_placement & pl, index_t row_
         for(index_t other_row = main_row+1; other_row <= std::min(pl.row_cnt()-1, main_row+row_extent) ; ++other_row){
 
             index_t first_oc = get_first_cell_on_row(pl, other_row); // The first candidate cell to be examined
-            for(index_t c = get_first_cell_on_row(pl, main_row); c != null_ind; c = get_next_cell_on_row(pl, c)){
+            for(index_t c = get_first_cell_on_row(pl, main_row); c != null_ind; c = get_next_cell_on_row(pl, c, main_row)){
                 assert(pl.cells_[c].row == main_row);
                 if( (circuit.get_cell(c).attributes & XMovable) == 0) continue; // Don't touch fixed cells
 
@@ -572,7 +572,7 @@ void swaps_global(netlist const & circuit, detailed_placement & pl, index_t row_
                 index_t nb_after  = 0;
                 index_t nb_before = 0;
                 int_t pos_low = pl.cells_[c].position.x_ - pl.cells_[c].width, pos_hgh = pl.cells_[c].position.x_ + 2*pl.cells_[c].width;
-                for(index_t oc=first_oc; oc != null_ind and nb_after <= row_extent; oc = get_next_cell_on_row(pl, oc)){
+                for(index_t oc=first_oc; oc != null_ind and nb_after <= row_extent; oc = get_next_cell_on_row(pl, oc, other_row)){
                     assert(pl.cells_[oc].row == other_row);
                     if( (circuit.get_cell(oc).attributes & XMovable) == 0) continue; // Don't touche fixed cells
 
@@ -587,7 +587,7 @@ void swaps_global(netlist const & circuit, detailed_placement & pl, index_t row_
                 }
                 while(nb_before > cell_extent){
                     nb_before--;
-                    first_oc = get_next_cell_on_row(pl, first_oc);
+                    first_oc = get_next_cell_on_row(pl, first_oc, other_row);
                 }
             }
         }
@@ -624,7 +624,7 @@ void OSRP_convex(netlist const & circuit, detailed_placement & pl){
                 }
             }
 
-            if(OSRP_cell != null_ind) OSRP_cell = get_first_standard_cell(pl, r, OSRP_cell); // Go to the next group
+            if(OSRP_cell != null_ind) OSRP_cell = get_next_cell_on_row(pl, OSRP_cell, r); // Go to the next group
         } // Iteration on the entire row
     } // Iteration on the rows
 
@@ -709,7 +709,7 @@ void swaps_row(netlist const & circuit, detailed_placement & pl, index_t range){
             if(OSRP_cell != null_ind){
                 // We are on a non-movable cell
                 if( (circuit.get_cell(OSRP_cell).attributes & XMovable) == 0 or pl.cells_[OSRP_cell].height != 1){
-                    OSRP_cell = get_first_standard_cell(pl, r, OSRP_cell); // Go to the next group
+                    OSRP_cell = get_next_cell_on_row(pl, OSRP_cell, r); // Go to the next group
                 }
                 else{ // We optimized with the maximum number of cells: just advance one cell and optimize again
                     assert(cells.size() == range);
