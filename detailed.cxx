@@ -113,6 +113,54 @@ void detailed_placement::selfcheck() const{
     }
 }
 
+void detailed_placement::swap_topologies(index_t c1, index_t c2){
+    assert(cell_height(c1) == cell_height(c2));
+    assert(cell_height(c1) == 1 and cell_height(c2) == 1);
+
+    index_t row_c1 = cells_[c1].row,
+            row_c2 = cells_[c2].row;
+
+    index_t b_c1 = neighbours_[neighbours_limits_[c1]].first;
+    index_t b_c2 = neighbours_[neighbours_limits_[c2]].first;
+    index_t a_c1 = neighbours_[neighbours_limits_[c1]].second;
+    index_t a_c2 = neighbours_[neighbours_limits_[c2]].second;
+
+    // Two cases: they were adjacent or they were not
+    // Luckily updating in the neighbours first then swapping the recorded neighbours works in both cases for standard cells
+
+    // Update the pointers in the cells' neighbours
+    if(b_c1 != null_ind) neighbours_[neighbour_index(b_c1, row_c1)].second = c2;
+    else row_first_cells_[row_c1] = c2;
+    if(b_c2 != null_ind) neighbours_[neighbour_index(b_c2, row_c2)].second = c1;
+    else row_first_cells_[row_c2] = c1;
+
+    if(a_c1 != null_ind) neighbours_[neighbour_index(a_c1, row_c1)].first  = c2;
+    else row_last_cells_[row_c1] = c2;
+    if(a_c2 != null_ind) neighbours_[neighbour_index(a_c2, row_c2)].first  = c1;
+    else row_last_cells_[row_c2] = c1;
+
+    // Swap the properties in both cells
+    std::swap(neighbours_[neighbours_limits_[c1]], neighbours_[neighbours_limits_[c2]]);
+    std::swap(cells_[c1].row, cells_[c2].row);
+}
+
+std::pair<int_t, int_t> detailed_placement::get_limit_positions(index_t c){
+    auto ret = std::pair<int_t, int_t>(min_x_, max_x_);
+    for(index_t l=neighbours_limits_[c]; l<neighbours_limits_[c+1]; ++l){
+        index_t b_i = neighbours_[l].first,
+                a_i = neighbours_[l].second;
+        if(b_i != null_ind){
+            auto & b_c = cells_[b_i];
+            ret.first  = std::max(ret.first,  b_c.position.x_ + b_c.width);
+        }
+        if(a_i != null_ind){
+            auto & a_c = cells_[a_i];
+            ret.second = std::min(ret.second, a_c.position.x_);
+        }
+    }
+    return ret;
+}
+
 void optimize_on_topology(netlist const & circuit, detailed_placement & pl){
     // Solves a minimum cost flow problem to optimize the placement at fixed topology
     // Concretely, it means aligning the pins to minimize the wirelength
@@ -274,37 +322,22 @@ inline float_t get_nets_cost(netlist const & circuit, detailed_placement const &
 
 // Tries to swap two cells; 
 bool try_swap(netlist const & circuit, detailed_placement & pl, index_t c1, index_t c2){
-    index_t row_c1 = pl.cells_[c1].row,
-            row_c2 = pl.cells_[c2].row;
-
     assert(pl.cell_height(c1) == 1 and pl.cell_height(c2) == 1);
     assert(circuit.get_cell(c1).size.y_ == circuit.get_cell(c2).size.y_); // Same (standard cell) height
-    assert(row_c1 != row_c2); // Same (standard cell) height
     assert( (circuit.get_cell(c1).attributes & XMovable) != 0 and (circuit.get_cell(c1).attributes & YMovable) != 0);
     assert( (circuit.get_cell(c2).attributes & XMovable) != 0 and (circuit.get_cell(c2).attributes & YMovable) != 0);
 
-    int_t c1_l, c1_u,
-          c2_l, c2_u;
-
-    index_t b_c1 = pl.neighbours_[pl.neighbours_limits_[c1]].first;
-    index_t b_c2 = pl.neighbours_[pl.neighbours_limits_[c2]].first;
-    index_t a_c1 = pl.neighbours_[pl.neighbours_limits_[c1]].second;
-    index_t a_c2 = pl.neighbours_[pl.neighbours_limits_[c2]].second;
-
-    // Limit positions for c1 and c2
-    c1_l = b_c1 != null_ind ? pl.cells_[b_c1].position.x_ + pl.cells_[b_c1].width : pl.min_x_;
-    c2_l = b_c2 != null_ind ? pl.cells_[b_c2].position.x_ + pl.cells_[b_c2].width : pl.min_x_;
-    c1_u = a_c1 != null_ind ? pl.cells_[a_c1].position.x_ : pl.max_x_;
-    c2_u = a_c2 != null_ind ? pl.cells_[a_c2].position.x_ : pl.max_x_;
+    auto c1_bnds = pl.get_limit_positions(c1),
+         c2_bnds = pl.get_limit_positions(c2);
 
     int_t swp_min_c1, swp_max_c1,
           swp_min_c2, swp_max_c2;
 
     // Get the possible positions for a swap
-    swp_min_c1 = c2_l;
-    swp_min_c2 = c1_l;
-    swp_max_c1 = c2_u - pl.cells_[c1].width;
-    swp_max_c2 = c1_u - pl.cells_[c2].width;
+    swp_min_c1 = c2_bnds.first;
+    swp_min_c2 = c1_bnds.first;
+    swp_max_c1 = c2_bnds.second - pl.cells_[c1].width;
+    swp_max_c2 = c1_bnds.second - pl.cells_[c2].width;
 
     if(swp_max_c1 >= swp_min_c1 and swp_max_c2 >= swp_min_c2){
         // Check both orientations of the cell
@@ -338,21 +371,7 @@ bool try_swap(netlist const & circuit, detailed_placement & pl, index_t c1, inde
         float_t swp_cost = get_nets_cost(circuit, pl, involved_nets);
 
         if(swp_cost < old_cost){
-            // Update the cells' neighbours
-            std::swap(pl.neighbours_[pl.neighbours_limits_[c1]],  pl.neighbours_[pl.neighbours_limits_[c2]]);
-
-            // Update the neighbours too
-            if(b_c1 != null_ind) pl.neighbours_[pl.neighbour_index(b_c1, row_c1)].second = c2;
-            else pl.row_first_cells_[row_c1] = c2;
-            if(b_c2 != null_ind) pl.neighbours_[pl.neighbour_index(b_c2, row_c2)].second = c1;
-            else pl.row_first_cells_[row_c2] = c1;
-            if(a_c1 != null_ind) pl.neighbours_[pl.neighbour_index(a_c1, row_c1)].first  = c2;
-            else pl.row_last_cells_[row_c1] = c2;
-            if(a_c2 != null_ind) pl.neighbours_[pl.neighbour_index(a_c2, row_c2)].first  = c1;
-            else pl.row_last_cells_[row_c2] = c1;
-
-            // Update the rows
-            std::swap(pl.cells_[c1].row, pl.cells_[c2].row);
+            pl.swap_topologies(c1, c2);
 
             // We kept the swap
             return true;

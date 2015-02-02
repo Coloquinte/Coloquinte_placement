@@ -60,13 +60,6 @@ struct detailed_placement{
 
     void swap_topologies(index_t c1, index_t c2);
     std::pair<int_t, int_t> get_limit_positions(index_t c);
-
-    // TODO:
-    //     Swap cells
-    //     Reorder groups of cells
-    //     Get limit positions of a cell
-    //     Get next cell
-    //     Iterators on cells before/after
 };
 
 void swaps_global(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent);
