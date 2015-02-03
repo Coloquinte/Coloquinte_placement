@@ -182,6 +182,40 @@ index_t detailed_placement::get_next_cell_on_row(index_t c, index_t r){
     return c;
 }
 
+void detailed_placement::reorder_standard_cells(std::vector<index_t> const old_order, std::vector<index_t> const new_order){
+    assert(old_order.size() == new_order.size());
+    assert(not old_order.empty());
+
+    index_t before_row = neighbours_[neighbours_limits_[old_order.front()]].first;
+    index_t after_row  = neighbours_[neighbours_limits_[old_order.back() ]].second;
+
+    index_t r = cells_[new_order.front()].row;
+
+    for(index_t i=0; i<new_order.size(); ++i){
+        assert(cell_height(new_order[i]) == 1);
+        assert(cells_[new_order[i]].row == r);
+
+        auto & nghs = neighbours_[neighbours_limits_[new_order[i]]];
+        if(i > 0){
+            nghs.first = new_order[i-1];
+        }
+        else{
+            nghs.first = before_row;
+        }
+        if(i+1 < new_order.size()){
+            nghs.second = new_order[i+1];
+        }
+        else{
+            nghs.second = after_row;
+        }
+    }
+
+    if(before_row != null_ind) neighbours_[neighbour_index(before_row, r)].second = new_order.front();
+    else row_first_cells_[r] = new_order.front();
+    if(after_row != null_ind) neighbours_[neighbour_index(after_row, r)].first = new_order.back();
+    else row_last_cells_[r] = new_order.back(); 
+}
+
 void optimize_on_topology(netlist const & circuit, detailed_placement & pl){
     // Solves a minimum cost flow problem to optimize the placement at fixed topology
     // Concretely, it means aligning the pins to minimize the wirelength
@@ -622,10 +656,8 @@ void OSRP_convex(netlist const & circuit, detailed_placement & pl){
 
             if(not cells.empty()){
                 // Limits of the placement region for the cells taken
-                index_t before_row = pl.neighbours_[pl.neighbours_limits_[cells.front()]].first;
-                index_t lower_lim = before_row != null_ind ? pl.cells_[before_row].width + pl.cells_[before_row].position.x_ : pl.min_x_;
-                index_t after_row  = pl.neighbours_[pl.neighbours_limits_[cells.back() ]].second;
-                index_t upper_lim = after_row != null_ind ? pl.cells_[after_row].position.x_ : pl.max_x_;
+                int_t lower_lim = pl.get_limit_positions(cells.front()).first,
+                      upper_lim = pl.get_limit_positions(cells.back()).second;
                 std::vector<int_t> final_positions;
                 optimize_convex_sequence(circuit, pl, cells, final_positions, lower_lim, upper_lim);
 
@@ -662,16 +694,15 @@ void swaps_row(netlist const & circuit, detailed_placement & pl, index_t range){
 
             if(not cells.empty()){
                 // Limits of the placement region for the cells taken
-                index_t before_row = pl.neighbours_[pl.neighbours_limits_[cells.front()]].first;
-                index_t lower_lim = before_row != null_ind ? pl.cells_[before_row].width + pl.cells_[before_row].position.x_ : pl.min_x_;
-                index_t after_row  = pl.neighbours_[pl.neighbours_limits_[cells.back() ]].second;
-                index_t upper_lim = after_row != null_ind ? pl.cells_[after_row].position.x_ : pl.max_x_;
+                int_t lower_lim = pl.get_limit_positions(cells.front()).first,
+                      upper_lim = pl.get_limit_positions(cells.back()).second;
 
                 float_t best_cost = std::numeric_limits<float_t>::infinity();
                 std::vector<int_t> positions(cells.size());
                 std::vector<index_t> best_permutation = cells;
                 std::vector<int_t> best_positions(cells.size());;
-    
+                std::vector<index_t> old_permutation = cells;
+
                 // Check every possible permutation of the cells
                 std::sort(cells.begin(), cells.end());
                 do{
@@ -691,38 +722,16 @@ void swaps_row(netlist const & circuit, detailed_placement & pl, index_t range){
                 for(index_t i=0; i<cells.size(); ++i){
                     pl.cells_[cells[i]].position.x_ = best_positions[i];
                 }
-                for(index_t i=0; i<cells.size(); ++i){
-                    if(i > 0){
-                        assert(pl.cells_[cells[i]].position.x_ >= pl.cells_[cells[i-1]].width + pl.cells_[cells[i-1]].position.x_);
-                    }
-                }
-                for(index_t i=0; i<cells.size(); ++i){
-                    auto & nghs = pl.neighbours_[pl.neighbours_limits_[cells[i]]];
-                    if(i > 0){
-                        nghs.first = cells[i-1];
-                    }
-                    else{
-                        nghs.first = before_row;
-                    }
-                    if(i+1 < cells.size()){
-                        nghs.second = cells[i+1];
-                    }
-                    else{
-                        nghs.second = after_row;
-                    }
-                }
-                if(before_row != null_ind) pl.neighbours_[pl.neighbour_index(before_row, r)].second = cells.front();
-                else pl.row_first_cells_[r] = cells.front();
-                if(after_row != null_ind) pl.neighbours_[pl.neighbour_index(after_row, r)].first = cells.back();
-                else pl.row_last_cells_[r] = cells.back();
-            }
+
+                pl.reorder_standard_cells(old_permutation, cells);
+           }
     
             if(OSRP_cell != null_ind){
                 // We are on a non-movable cell
                 if( (circuit.get_cell(OSRP_cell).attributes & XMovable) == 0 or pl.cell_height(OSRP_cell) != 1){
                     OSRP_cell = pl.get_next_cell_on_row(OSRP_cell, r); // Go to the next group
                 }
-                else{ // We optimized with the maximum number of cells: just advance one cell and optimize again
+                else{ // We optimized with the maximum number of cells: just advance a few cells and optimize again
                     assert(cells.size() == range);
                     OSRP_cell = cells[range/2];
                 }
