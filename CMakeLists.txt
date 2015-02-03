@@ -16,27 +16,27 @@
 #   include_directories ( 
 #                         ${Coloquinte_SOURCE_DIR}/src
 #                       )
-                   set ( includes          Coloquinte/circuit.hxx
-                                           Coloquinte/circuit_helper.hxx
-                                           Coloquinte/common.hxx
-                                           Coloquinte/netlist.hxx
-                                           Coloquinte/solvers.hxx
-                                           Coloquinte/rough_legalizers.hxx
-                                           Coloquinte/detailed.hxx
-                                           Coloquinte/topologies.hxx
-                                           Coloquinte/optimization_subproblems.hxx
+                   set ( includes          src/coloquinte/circuit.hxx
+                                           src/coloquinte/circuit_helper.hxx
+                                           src/coloquinte/common.hxx
+                                           src/coloquinte/netlist.hxx
+                                           src/coloquinte/solvers.hxx
+                                           src/coloquinte/rough_legalizers.hxx
+                                           src/coloquinte/detailed.hxx
+                                           src/coloquinte/topologies.hxx
+                                           src/coloquinte/optimization_subproblems.hxx
                        )	           
-                   set ( cpps              circuit.cxx
-                                           rough_legalizers.cxx
-                                           solvers.cxx
-                                           optimization_subproblems.cxx
-                                           orientation.cxx
-                                           detailed.cxx
-                                           topologies.cxx
-                                           lookup_table.cxx
-                                           legalizer.cxx
+                   set ( cpps              src/circuit.cxx
+                                           src/rough_legalizers.cxx
+                                           src/solvers.cxx
+                                           src/optimization_subproblems.cxx
+                                           src/orientation.cxx
+                                           src/detailed.cxx
+                                           src/topologies.cxx
+                                           src/lookup_table.cxx
+                                           src/legalizer.cxx
                        )
-                   set ( coloquintecpps    main.cxx )
+                   set ( coloquintecpps    src/main.cxx )
 					   
             add_library ( coloquinte        ${cpps} )
             add_executable ( coloquinte.bin    ${coloquintecpps})

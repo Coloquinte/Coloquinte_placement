@@ -1,6 +1,6 @@
 
-#include "Coloquinte/rough_legalizers.hxx"
-#include "Coloquinte/optimization_subproblems.hxx"
+#include "coloquinte/rough_legalizers.hxx"
+#include "coloquinte/optimization_subproblems.hxx"
 
 #include <algorithm>
 #include <cmath>

@@ -1,6 +1,6 @@
 
-#include "Coloquinte/detailed.hxx"
-#include "Coloquinte/optimization_subproblems.hxx"
+#include "coloquinte/detailed.hxx"
+#include "coloquinte/optimization_subproblems.hxx"
 
 #include <lemon/smart_graph.h>
 #include <lemon/network_simplex.h>

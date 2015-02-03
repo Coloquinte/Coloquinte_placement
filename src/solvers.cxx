@@ -1,5 +1,5 @@
 
-#include "Coloquinte/solvers.hxx"
+#include "coloquinte/solvers.hxx"
 
 #include <cassert>
 
