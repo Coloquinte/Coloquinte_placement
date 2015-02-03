@@ -1,6 +1,6 @@
 
-#include "Coloquinte/legalizer.hxx"
-#include "Coloquinte/optimization_subproblems.hxx"
+#include "coloquinte/legalizer.hxx"
+#include "coloquinte/optimization_subproblems.hxx"
 
 #include <algorithm>
 #include <cmath>
@@ -363,6 +363,7 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
     std::vector<cell_to_leg> cells;
 
     std::vector<detailed_placement::internal_cell> detailed_cells(circuit.cell_cnt());
+    std::vector<index_t> cell_heights(circuit.cell_cnt());
 
     for(index_t i=0; i<circuit.cell_cnt(); ++i){
         auto cur = circuit.get_cell(i);
@@ -372,7 +373,7 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
             point<int_t> target_pos = pl.positions_[i] - 0.5f * static_cast<point<float_t> >(cur.size);
             index_t cur_cell_rows = (cur.size.y_ + row_height -1) / row_height;
             cells.push_back(cell_to_leg(target_pos.x_, target_pos.y_, i, cur.size.x_, cur_cell_rows));
-            detailed_cells[i].height = cur_cell_rows;
+            cell_heights[i] = cur_cell_rows;
             detailed_cells[i].width = cur.size.x_;
         }
         else{
@@ -387,7 +388,7 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
             detailed_cells[i].width = hgh_x_pos - low_x_pos;
             if(hgh_y_pos <= surface.y_min_ or low_y_pos >= surface.y_max_ or hgh_x_pos <= surface.x_min_ or low_x_pos >= surface.x_max_){
                 detailed_cells[i].row = null_ind;
-                detailed_cells[i].height = 0;
+                cell_heights[i] = 0;
             }
             else{
                 assert(low_x_pos < hgh_x_pos and low_y_pos < hgh_y_pos);
@@ -402,7 +403,7 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
                 assert(last_row <= nbr_rows);
 
                 detailed_cells[i].row = first_row;
-                detailed_cells[i].height = last_row - first_row;
+                cell_heights[i] = last_row - first_row;
                 for(index_t r=first_row; r<last_row; ++r){
                     row_occupation[r].push_back(fixed_cell_interval(rnd_low_x_pos, rnd_hgh_x_pos, i));
                 }
@@ -440,6 +441,7 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
 
     return detailed_placement(
         detailed_cells,
+        cell_heights,
         cells_by_rows,
         surface.x_min_, surface.x_max_,
         surface.y_min_,

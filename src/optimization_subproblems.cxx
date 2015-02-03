@@ -1,5 +1,5 @@
 
-#include "Coloquinte/optimization_subproblems.hxx"
+#include "coloquinte/optimization_subproblems.hxx"
 
 namespace coloquinte{
 
