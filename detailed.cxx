@@ -161,6 +161,27 @@ std::pair<int_t, int_t> detailed_placement::get_limit_positions(index_t c){
     return ret;
 }
 
+index_t detailed_placement::get_first_cell_on_row(index_t r){
+    index_t c = row_first_cells_[r];
+    while(c != null_ind and cell_height(c) != 1){
+        index_t next_c = neighbours_[neighbour_index(c, r)].second;
+        assert(c != next_c);
+        c = next_c;
+    }
+    assert(c == null_ind or cells_[c].row == r);
+    return c;
+}
+
+index_t detailed_placement::get_next_cell_on_row(index_t c, index_t r){
+    do{
+        index_t next_c = neighbours_[neighbour_index(c, r)].second;
+        assert(c != next_c);
+        c = next_c;
+    }while(c != null_ind and cell_height(c) != 1);
+    assert(c == null_ind or cells_[c].row == r);
+    return c;
+}
+
 void optimize_on_topology(netlist const & circuit, detailed_placement & pl){
     // Solves a minimum cost flow problem to optimize the placement at fixed topology
     // Concretely, it means aligning the pins to minimize the wirelength
@@ -330,14 +351,11 @@ bool try_swap(netlist const & circuit, detailed_placement & pl, index_t c1, inde
     auto c1_bnds = pl.get_limit_positions(c1),
          c2_bnds = pl.get_limit_positions(c2);
 
-    int_t swp_min_c1, swp_max_c1,
-          swp_min_c2, swp_max_c2;
-
     // Get the possible positions for a swap
-    swp_min_c1 = c2_bnds.first;
-    swp_min_c2 = c1_bnds.first;
-    swp_max_c1 = c2_bnds.second - pl.cells_[c1].width;
-    swp_max_c2 = c1_bnds.second - pl.cells_[c2].width;
+    int_t swp_min_c1 = c2_bnds.first,
+          swp_min_c2 = c1_bnds.first,
+          swp_max_c1 = c2_bnds.second - pl.cells_[c1].width,
+          swp_max_c2 = c1_bnds.second - pl.cells_[c2].width;
 
     if(swp_max_c1 >= swp_min_c1 and swp_max_c2 >= swp_min_c2){
         // Check both orientations of the cell
@@ -398,31 +416,6 @@ bool try_swap(netlist const & circuit, detailed_placement & pl, index_t c1, inde
     else{ // We just cannot swap those two cells without pushing anything
         return false;
     }
-}
-
-inline index_t get_first_standard_cell(detailed_placement const & pl, index_t c, index_t r){
-    while(c != null_ind and pl.cell_height(c) != 1){
-        index_t next_c = pl.neighbours_[pl.neighbour_index(c, r)].second;
-        assert(c != next_c);
-        c = next_c;
-    }
-    assert(c == null_ind or pl.cells_[c].row == r);
-    return c;
-}
-
-inline index_t get_first_cell_on_row(detailed_placement const & pl, index_t r){
-    index_t c = pl.row_first_cells_[r];
-    return get_first_standard_cell(pl, c, r);
-}
-
-inline index_t get_next_cell_on_row(detailed_placement const & pl, index_t c, index_t r){
-    do{
-        index_t next_c = pl.neighbours_[pl.neighbour_index(c, r)].second;
-        assert(c != next_c);
-        c = next_c;
-    }while(c != null_ind and pl.cell_height(c) != 1);
-    assert(c == null_ind or pl.cells_[c].row == r);
-    return c;
 }
 
 struct net_properties{
@@ -581,8 +574,8 @@ void swaps_global(netlist const & circuit, detailed_placement & pl, index_t row_
 
         for(index_t other_row = main_row+1; other_row <= std::min(pl.row_cnt()-1, main_row+row_extent) ; ++other_row){
 
-            index_t first_oc = get_first_cell_on_row(pl, other_row); // The first candidate cell to be examined
-            for(index_t c = get_first_cell_on_row(pl, main_row); c != null_ind; c = get_next_cell_on_row(pl, c, main_row)){
+            index_t first_oc = pl.get_first_cell_on_row(other_row); // The first candidate cell to be examined
+            for(index_t c = pl.get_first_cell_on_row(main_row); c != null_ind; c = pl.get_next_cell_on_row(c, main_row)){
                 assert(pl.cells_[c].row == main_row);
                 if( (circuit.get_cell(c).attributes & XMovable) == 0) continue; // Don't touch fixed cells
 
@@ -590,7 +583,7 @@ void swaps_global(netlist const & circuit, detailed_placement & pl, index_t row_
                 index_t nb_after  = 0;
                 index_t nb_before = 0;
                 int_t pos_low = pl.cells_[c].position.x_ - pl.cells_[c].width, pos_hgh = pl.cells_[c].position.x_ + 2*pl.cells_[c].width;
-                for(index_t oc=first_oc; oc != null_ind and nb_after <= row_extent; oc = get_next_cell_on_row(pl, oc, other_row)){
+                for(index_t oc=first_oc; oc != null_ind and nb_after <= row_extent; oc = pl.get_next_cell_on_row(oc, other_row)){
                     assert(pl.cells_[oc].row == other_row);
                     if( (circuit.get_cell(oc).attributes & XMovable) == 0) continue; // Don't touche fixed cells
 
@@ -605,7 +598,7 @@ void swaps_global(netlist const & circuit, detailed_placement & pl, index_t row_
                 }
                 while(nb_before > cell_extent){
                     nb_before--;
-                    first_oc = get_next_cell_on_row(pl, first_oc, other_row);
+                    first_oc = pl.get_next_cell_on_row(first_oc, other_row);
                 }
             }
         }
@@ -615,7 +608,7 @@ void swaps_global(netlist const & circuit, detailed_placement & pl, index_t row_
 
 void OSRP_convex(netlist const & circuit, detailed_placement & pl){
     for(index_t r=0; r<pl.row_cnt(); ++r){
-        index_t OSRP_cell = get_first_cell_on_row(pl, r);
+        index_t OSRP_cell = pl.get_first_cell_on_row(r);
 
         while(OSRP_cell != null_ind){
             std::vector<index_t> cells;
@@ -642,7 +635,7 @@ void OSRP_convex(netlist const & circuit, detailed_placement & pl){
                 }
             }
 
-            if(OSRP_cell != null_ind) OSRP_cell = get_next_cell_on_row(pl, OSRP_cell, r); // Go to the next group
+            if(OSRP_cell != null_ind) OSRP_cell = pl.get_next_cell_on_row(OSRP_cell, r); // Go to the next group
         } // Iteration on the entire row
     } // Iteration on the rows
 
@@ -653,7 +646,7 @@ void swaps_row(netlist const & circuit, detailed_placement & pl, index_t range){
     assert(range >= 2);
 
     for(index_t r=0; r<pl.row_cnt(); ++r){
-        index_t OSRP_cell = get_first_cell_on_row(pl, r);
+        index_t OSRP_cell = pl.get_first_cell_on_row(r);
 
         while(OSRP_cell != null_ind){
             std::vector<index_t> cells;
@@ -727,7 +720,7 @@ void swaps_row(netlist const & circuit, detailed_placement & pl, index_t range){
             if(OSRP_cell != null_ind){
                 // We are on a non-movable cell
                 if( (circuit.get_cell(OSRP_cell).attributes & XMovable) == 0 or pl.cell_height(OSRP_cell) != 1){
-                    OSRP_cell = get_next_cell_on_row(pl, OSRP_cell, r); // Go to the next group
+                    OSRP_cell = pl.get_next_cell_on_row(OSRP_cell, r); // Go to the next group
                 }
                 else{ // We optimized with the maximum number of cells: just advance one cell and optimize again
                     assert(cells.size() == range);
