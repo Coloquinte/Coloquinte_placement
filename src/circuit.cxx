@@ -294,7 +294,7 @@ float_t get_RSMT_wirelength(netlist const & circuit, placement_t const & pl){
     return sum;
 }
 
-void get_result(netlist const & circuit, placement_t & pl, point<linear_system> & L, index_t nbr_iter){
+void solve_linear_system(netlist const & circuit, placement_t & pl, point<linear_system> & L, index_t nbr_iter){
     std::vector<float_t> x_sol, y_sol;
     std::vector<float_t> x_guess(pl.cell_cnt()), y_guess(pl.cell_cnt());
     
@@ -394,7 +394,7 @@ region_distribution get_rough_legalizer(netlist const & circuit, placement_t con
     return region_distribution(surface, movable_cells, fixed_cells);
 }
 
-void get_result(netlist const & circuit, placement_t & pl, region_distribution const & legalizer){
+void get_rough_legalization(netlist const & circuit, placement_t & pl, region_distribution const & legalizer){
     auto exportation = legalizer.export_spread_positions_linear();
     for(auto const C : exportation){
         pl.positions_[C.index_in_placement_] = C.pos_;
