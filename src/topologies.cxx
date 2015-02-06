@@ -9,21 +9,21 @@
 namespace coloquinte{
 namespace {
 
-struct indexed_pt : point<float_t>{
+struct indexed_pt : point<int_t>{
     index_t index;
-    indexed_pt(point<float_t> pt, index_t pos) : point<float_t>(pt), index(pos) {}
+    indexed_pt(point<int_t> pt, index_t pos) : point<int_t>(pt), index(pos) {}
     indexed_pt(){}
 };
 
 template<int n, int array_size>
-float_t get_wirelength(std::vector<point<float_t> > const & pins, std::array<Hconnectivity<n>, array_size> const & lookups){
-    std::array<point<float_t>, n> points;
+int_t get_wirelength(std::vector<point<int_t> > const & pins, std::array<Hconnectivity<n>, array_size> const & lookups){
+    std::array<point<int_t>, n> points;
     for(index_t i=0; i<n; ++i){
         points[i] = pins[i];
     }
 
-    std::sort(points.begin(), points.end(), [](point<float_t> a , point<float_t> b){return a.x_ < b.x_; });
-    float_t cost = std::numeric_limits<float_t>::infinity();
+    std::sort(points.begin(), points.end(), [](point<int_t> a , point<int_t> b){return a.x_ < b.x_; });
+    int_t cost = std::numeric_limits<int_t>::max();
     for(auto const L : lookups){
         cost = std::min(cost, L.get_wirelength(points));
     }
@@ -31,7 +31,7 @@ float_t get_wirelength(std::vector<point<float_t> > const & pins, std::array<Hco
 }
 
 template<int n, int array_size>
-std::vector<std::pair<index_t, index_t> > get_topology(std::vector<point<float_t> > const & pins, std::array<Hconnectivity<n>, array_size> const & lookups){
+std::vector<std::pair<index_t, index_t> > get_topology(std::vector<point<int_t> > const & pins, std::array<Hconnectivity<n>, array_size> const & lookups){
     std::array<indexed_pt, n> ipoints;
     for(index_t i=0; i<n; ++i){
         ipoints[i] = indexed_pt(pins[i], i);
@@ -39,16 +39,16 @@ std::vector<std::pair<index_t, index_t> > get_topology(std::vector<point<float_t
 
     std::sort(ipoints.begin(), ipoints.end(), [](indexed_pt a , indexed_pt b){return a.x_ < b.x_; });
 
-    std::array<point<float_t>, n> points;
+    std::array<point<int_t>, n> points;
     for(index_t i=0; i<n; ++i){
         points[i] = ipoints[i];
     }
 
     // Find the horizontal topology with the smallest cost
-    float_t cost = std::numeric_limits<float_t>::infinity();
+    int_t cost = std::numeric_limits<int_t>::max();
     index_t ind  = std::numeric_limits<index_t>::max();
     for(index_t i=0; i<array_size; ++i){
-        float_t this_cost = lookups[i].get_wirelength(points);
+        int_t this_cost = lookups[i].get_wirelength(points);
         if(this_cost < cost){
             cost = this_cost;
             ind = i;
@@ -65,7 +65,7 @@ std::vector<std::pair<index_t, index_t> > get_topology(std::vector<point<float_t
     return std::vector<std::pair<index_t, index_t> >(topo.begin(), topo.end());
 }
 
-point<std::vector<std::pair<index_t, index_t> > > get_vertical_topology(std::vector<point<float_t> > pins, std::vector<std::pair<index_t, index_t> > const & Htopo){
+point<std::vector<std::pair<index_t, index_t> > > get_vertical_topology(std::vector<point<int_t> > pins, std::vector<std::pair<index_t, index_t> > const & Htopo){
     typedef std::pair<index_t, index_t> edge_t;
     index_t const null_ind = std::numeric_limits<index_t>::max();
 
@@ -155,7 +155,7 @@ point<std::vector<std::pair<index_t, index_t> > > get_vertical_topology(std::vec
     return point<std::vector<edge_t> >(Htopo, ret);
 }
 
-inline void northeast_octant_neighbours(std::vector<point<float_t> > pins, std::vector<std::pair<index_t, index_t> > & edges){
+inline void northeast_octant_neighbours(std::vector<point<int_t> > pins, std::vector<std::pair<index_t, index_t> > & edges){
 
     std::vector<indexed_pt> point_list;
     for(index_t i=0; i<pins.size(); ++i){
@@ -194,7 +194,7 @@ inline void northeast_octant_neighbours(std::vector<point<float_t> > pins, std::
 }
 
 // Gets the nearest octant neighbour for each point in the south-east quadrant
-inline void southeast_octant_neighbours(std::vector<point<float_t> > pins, std::vector<std::pair<index_t, index_t> > & edges){
+inline void southeast_octant_neighbours(std::vector<point<int_t> > pins, std::vector<std::pair<index_t, index_t> > & edges){
     for(auto & pin : pins){
         pin.y_ = - pin.y_;
     }
@@ -203,7 +203,7 @@ inline void southeast_octant_neighbours(std::vector<point<float_t> > pins, std::
 
 } // End anonymous namespace
 
-std::vector<std::pair<index_t, index_t> > get_MST_topology(std::vector<point<float_t> > const & pins){
+std::vector<std::pair<index_t, index_t> > get_MST_topology(std::vector<point<int_t> > const & pins){
     typedef std::pair<index_t, index_t> edge_t;
 
 	std::vector<edge_t> edges;
@@ -213,8 +213,8 @@ std::vector<std::pair<index_t, index_t> > get_MST_topology(std::vector<point<flo
             edges.push_back(edge_t(0, 1));
         }
         if(pins.size() == 3){
-            auto D = [](point<float_t> a, point<float_t> b){ return std::abs(a.x_ - b.x_) + std::abs(a.y_ - b.y_); };
-            auto dists = std::array<float_t, 3>({D(pins[1], pins[2]), D(pins[1], pins[2]), D(pins[0], pins[1])});
+            auto D = [](point<int_t> a, point<int_t> b){ return std::abs(a.x_ - b.x_) + std::abs(a.y_ - b.y_); };
+            auto dists = std::array<int_t, 3>({D(pins[1], pins[2]), D(pins[1], pins[2]), D(pins[0], pins[1])});
             index_t mx = std::max_element(dists.begin(), dists.end()) - dists.begin();
             for(index_t i=0; i<3; ++i){
                 if(i != mx)
@@ -269,7 +269,7 @@ std::vector<std::pair<index_t, index_t> > get_MST_topology(std::vector<point<flo
     };
 
     auto edge_length = [&](edge_t E){
-        point<float_t> p1 = pins[E.first],
+        point<int_t> p1 = pins[E.first],
                        p2 = pins[E.second];
         return std::abs(p1.x_ - p2.x_) + std::abs(p1.y_ - p2.y_);
     };
@@ -291,9 +291,9 @@ std::vector<std::pair<index_t, index_t> > get_MST_topology(std::vector<point<flo
 	return returned_edges;
 }
 
-float_t MST_length(std::vector<point<float_t> > const & pins){
+std::int64_t MST_length(std::vector<point<int_t> > const & pins){
     auto edges = get_MST_topology(pins);
-    float_t sum = 0.0;
+    std::int64_t sum = 0;
     for(auto E : edges){
         sum += std::abs(pins[E.first].x_ - pins[E.second].x_);
         sum += std::abs(pins[E.first].y_ - pins[E.second].y_);
@@ -301,7 +301,7 @@ float_t MST_length(std::vector<point<float_t> > const & pins){
     return sum;
 }
 
-float_t RSMT_length(std::vector<point<float_t> > const & pins, index_t exactitude_limit){
+std::int64_t RSMT_length(std::vector<point<int_t> > const & pins, index_t exactitude_limit){
     assert(exactitude_limit <= 10 and exactitude_limit >= 3);
     if(pins.size() <= exactitude_limit){
         if(pins.size() <= 3){
@@ -309,8 +309,8 @@ float_t RSMT_length(std::vector<point<float_t> > const & pins, index_t exactitud
                 return std::abs(pins[0].x_ - pins[1].x_) + std::abs(pins[0].y_ - pins[1].y_);
             }
             else if(pins.size() == 3){
-                auto minmaxX = std::minmax_element(pins.begin(), pins.end(), [](point<float_t> a, point<float_t> b){ return a.x_ < b.x_; }), 
-                     minmaxY = std::minmax_element(pins.begin(), pins.end(), [](point<float_t> a, point<float_t> b){ return a.y_ < b.y_; });
+                auto minmaxX = std::minmax_element(pins.begin(), pins.end(), [](point<int_t> a, point<int_t> b){ return a.x_ < b.x_; }), 
+                     minmaxY = std::minmax_element(pins.begin(), pins.end(), [](point<int_t> a, point<int_t> b){ return a.y_ < b.y_; });
                 return (minmaxX.second->x_ - minmaxX.first->x_) + (minmaxY.second->y_ - minmaxY.first->y_);
                 
             }
@@ -341,7 +341,7 @@ float_t RSMT_length(std::vector<point<float_t> > const & pins, index_t exactitud
     return MST_length(pins);
 }
 
-point<std::vector<std::pair<index_t, index_t> > > get_RSMT_topology(std::vector<point<float_t> > const & pins, index_t exactitude_limit){
+point<std::vector<std::pair<index_t, index_t> > > get_RSMT_topology(std::vector<point<int_t> > const & pins, index_t exactitude_limit){
     typedef std::pair<index_t, index_t> edge_t;
 
     assert(exactitude_limit <= 10 and exactitude_limit >= 3);

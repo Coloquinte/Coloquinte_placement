@@ -13,18 +13,6 @@
 namespace coloquinte{
 namespace gp{
 
-struct placement_t{
-    std::vector<point<float_t> > positions_;
-    std::vector<point<float_t> > orientations_;
-
-    index_t cell_cnt() const{
-        assert(positions_.size() == orientations_.size());
-        return positions_.size();
-    }
-
-    void selfcheck() const;
-};
-
 point<linear_system> empty_linear_systems(netlist const & circuit, placement_t const & pl);
 
 // Net models stuff
@@ -43,9 +31,9 @@ point<linear_system> get_linear_pulling_forces (netlist const & circuit, placeme
 void solve_linear_system(netlist const & circuit, placement_t & pl, point<linear_system> & L, index_t nbr_iter);
 
 // Cost-related stuff, whether wirelength or disruption
-float_t get_HPWL_wirelength (netlist const & circuit, placement_t const & pl);
-float_t get_MST_wirelength  (netlist const & circuit, placement_t const & pl);
-float_t get_RSMT_wirelength (netlist const & circuit, placement_t const & pl);
+std::int64_t get_HPWL_wirelength (netlist const & circuit, placement_t const & pl);
+std::int64_t get_MST_wirelength  (netlist const & circuit, placement_t const & pl);
+std::int64_t get_RSMT_wirelength (netlist const & circuit, placement_t const & pl);
 
 float_t get_mean_linear_disruption(netlist const & circuit, placement_t const & LB_pl, placement_t const & UB_pl);
 float_t get_mean_quadratic_disruption(netlist const & circuit, placement_t const & LB_pl, placement_t const & UB_pl);
@@ -56,9 +44,7 @@ void get_rough_legalization(netlist const & circuit, placement_t & pl, region_di
 
 // Cell orientation optimization
 void optimize_exact_orientations(netlist const & circuit, placement_t & pl);
-void zero_orientations(netlist const & circuit, placement_t & pl);
-void spread_orientations(netlist const & circuit, placement_t & pl);
-void round_orientations(netlist const & circuit, placement_t & pl);
+//void spread_orientations(netlist const & circuit, placement_t & pl);
 
 } // namespace gp
 } // namespace coloquinte

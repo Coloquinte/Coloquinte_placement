@@ -24,16 +24,10 @@ void netlist::selfcheck() const{
     }
 }
 
-namespace gp{
-
 void placement_t::selfcheck() const{
-    for(point<float_t> const p : positions_){
-        assert(std::isfinite(p.x_) and std::isfinite(p.y_));
-    }
-    for(point<float_t> const p : orientations_){
-        assert(std::isfinite(p.x_) and std::isfinite(p.y_));
-    }
 }
+
+namespace gp{
 
 void add_force(pin_1D const p1, pin_1D const p2, linear_system & L, float_t force){
     if(p1.movable && p2.movable){
@@ -62,7 +56,7 @@ void add_force(pin_1D const p1, pin_1D const p2, linear_system & L, float_t forc
 }
 
 void add_force(pin_1D const p1, pin_1D const p2, linear_system & L, float_t tol, float_t scale){
-    add_force(p1, p2, L, scale/std::max(tol, std::abs(p2.pos-p1.pos)));
+    add_force(p1, p2, L, scale/std::max(tol, static_cast<float_t>(std::abs(p2.pos-p1.pos))));
 }
 
 point<linear_system> empty_linear_systems(netlist const & circuit, placement_t const & pl){
@@ -78,11 +72,11 @@ point<linear_system> empty_linear_systems(netlist const & circuit, placement_t c
         }
 
         if( (XMovable & circuit.get_cell(i).attributes) == 0 or not found_true_net){
-            ret.x_.add_triplet(i, i, 1.0);
+            ret.x_.add_triplet(i, i, 1.0f);
             ret.x_.add_doublet(i, pl.positions_[i].x_);
         }
         if( (YMovable & circuit.get_cell(i).attributes) == 0 or not found_true_net){
-            ret.y_.add_triplet(i, i, 1.0);
+            ret.y_.add_triplet(i, i, 1.0f);
             ret.y_.add_doublet(i, pl.positions_[i].y_);
         }
     }
@@ -99,9 +93,9 @@ void get_HPWLF(std::vector<pin_1D> const & pins, linear_system & L, float_t tol)
         for(auto it = pins.begin(); it != pins.end(); ++it){
             // Just comparing the iterator is poorer due to redundancies in the benchmarks!
             if(it != min_elt){
-                add_force(*it, *min_elt, L, tol, 1.0/(pins.size()-1));
+                add_force(*it, *min_elt, L, tol, 1.0f/(pins.size()-1));
                 if(it != max_elt){ // Hopefully only one connexion between the min and max pins
-                    add_force(*it, *max_elt, L, tol, 1.0/(pins.size()-1));
+                    add_force(*it, *max_elt, L, tol, 1.0f/(pins.size()-1));
                 }
             }
         }
@@ -113,24 +107,24 @@ void get_HPWLR(std::vector<pin_1D> const & pins, linear_system & L, float_t tol)
     std::sort(sorted_pins.begin(), sorted_pins.end());
     // Pins are connected to the pin two places away
     for(index_t i=0; i+2<sorted_pins.size(); ++i){
-        add_force(sorted_pins[i], sorted_pins[i+2], L, tol, 0.5);
+        add_force(sorted_pins[i], sorted_pins[i+2], L, tol, 0.5f);
     }
     // The extreme pins are connected with their direct neighbour too
     if(sorted_pins.size() > 1){
-        add_force(sorted_pins[0], sorted_pins[1], L, tol, 0.5);
-        add_force(sorted_pins[sorted_pins.size()-1], sorted_pins[sorted_pins.size()-2], L, tol, 0.5);
+        add_force(sorted_pins[0], sorted_pins[1], L, tol, 0.5f);
+        add_force(sorted_pins[sorted_pins.size()-1], sorted_pins[sorted_pins.size()-2], L, tol, 0.5f);
     }
 }
 
 void get_star(std::vector<pin_1D> const & pins, linear_system & L, float_t tol, index_t star_index){
     // The net is empty, but we still populate the diagonal to avoid divide by zeros
     if(pins.size() < 2){
-        L.add_triplet(star_index, star_index, 1.0);
+        L.add_triplet(star_index, star_index, 1.0f);
         return;
     }
 
     for(pin_1D p : pins){
-        pin_1D star_pin = pin_1D(star_index, std::numeric_limits<float_t>::quiet_NaN(), 0.0, true);
+        pin_1D star_pin = pin_1D(star_index, 0, 0, true);
         add_force(p, star_pin, L, 1.0/pins.size());
     }
 }
@@ -139,7 +133,7 @@ void get_clique(std::vector<pin_1D> const & pins, linear_system & L, float_t tol
     // Pins are connected to the pin two places away
     for(index_t i=0; i+1<pins.size(); ++i){
         for(index_t j=i+1; j<pins.size(); ++j){
-            add_force(pins[i], pins[j], L, tol, 1.0/(pins.size()-1));
+            add_force(pins[i], pins[j], L, tol, 1.0f/(pins.size()-1));
         }
     }
 }
@@ -183,8 +177,8 @@ point<linear_system> get_star_linear_system  (netlist const & circuit, placement
         index_t pin_cnt = circuit.get_net(i).pin_cnt;
         if(pin_cnt < min_s or pin_cnt >= max_s){
             // Put a one in the intermediate variable in order to avoid non-invertible matrices
-            L.x_.add_triplet(i+circuit.cell_cnt(), i+circuit.cell_cnt(), 1.0);
-            L.y_.add_triplet(i+circuit.cell_cnt(), i+circuit.cell_cnt(), 1.0);
+            L.x_.add_triplet(i+circuit.cell_cnt(), i+circuit.cell_cnt(), 1.0f);
+            L.y_.add_triplet(i+circuit.cell_cnt(), i+circuit.cell_cnt(), 1.0f);
             continue;
         }
 
@@ -218,14 +212,14 @@ point<linear_system> get_MST_linear_system(netlist const & circuit, placement_t 
         if(pin_cnt < min_s or pin_cnt >= max_s or pin_cnt <= 1) continue;
             
         auto pins = get_pins_2D(circuit, pl, i);
-        std::vector<point<float_t> > points;
+        std::vector<point<int_t> > points;
         for(pin_2D const p : pins){
             points.push_back(p.pos);
         }
-        auto edges = get_MST_topology(points);
+        auto const edges = get_MST_topology(points);
         for(auto E : edges){
-            add_force(pins[E.first].x(), pins[E.second].x(), L.x_, tol, 1.0);
-            add_force(pins[E.first].y(), pins[E.second].y(), L.y_, tol, 1.0);
+            add_force(pins[E.first].x(), pins[E.second].x(), L.x_, tol, 1.0f);
+            add_force(pins[E.first].y(), pins[E.second].y(), L.y_, tol, 1.0f);
         }
     }
     return L;
@@ -239,24 +233,24 @@ point<linear_system> get_RSMT_linear_system(netlist const & circuit, placement_t
         if(pin_cnt < min_s or pin_cnt >= max_s or pin_cnt <= 1) continue;
             
         auto pins = get_pins_2D(circuit, pl, i);
-        std::vector<point<float_t> > points;
+        std::vector<point<int_t> > points;
         for(pin_2D const p : pins){
             points.push_back(p.pos);
         }
         auto const edges = get_RSMT_topology(points, 8);
         for(auto E : edges.x_){
-            add_force(pins[E.first].x(), pins[E.second].x(), L.x_, tol, 1.0);
+            add_force(pins[E.first].x(), pins[E.second].x(), L.x_, tol, 1.0f);
         }
         for(auto E : edges.y_){
-            add_force(pins[E.first].y(), pins[E.second].y(), L.y_, tol, 1.0);
+            add_force(pins[E.first].y(), pins[E.second].y(), L.y_, tol, 1.0f);
         }
     }
     return L;
 }
 
 
-float_t get_HPWL_wirelength(netlist const & circuit, placement_t const & pl){
-    float_t sum = 0.0;
+std::int64_t get_HPWL_wirelength(netlist const & circuit, placement_t const & pl){
+    std::int64_t sum = 0;
     for(index_t i=0; i<circuit.net_cnt(); ++i){
         if(circuit.get_net(i).pin_cnt <= 1) continue;
 
@@ -268,11 +262,11 @@ float_t get_HPWL_wirelength(netlist const & circuit, placement_t const & pl){
 }
 
 // The true wirelength with minimum spanning trees, except for very small nets (<= 3) where we have HPWL == true WL
-float_t get_MST_wirelength(netlist const & circuit, placement_t const & pl){
-    float_t sum = 0.0;
+std::int64_t get_MST_wirelength(netlist const & circuit, placement_t const & pl){
+    std::int64_t sum = 0;
     for(index_t i=0; i<circuit.net_cnt(); ++i){
         auto pins = get_pins_2D(circuit, pl, i);
-        std::vector<point<float_t> > points;
+        std::vector<point<int_t> > points;
         for(pin_2D const p : pins){
             points.push_back(p.pos);
         }
@@ -281,11 +275,11 @@ float_t get_MST_wirelength(netlist const & circuit, placement_t const & pl){
     return sum;
 }
 
-float_t get_RSMT_wirelength(netlist const & circuit, placement_t const & pl){
-    float_t sum = 0.0;
+std::int64_t get_RSMT_wirelength(netlist const & circuit, placement_t const & pl){
+    std::int64_t sum = 0;
     for(index_t i=0; i<circuit.net_cnt(); ++i){
         auto pins = get_pins_2D(circuit, pl, i);
-        std::vector<point<float_t> > points;
+        std::vector<point<int_t> > points;
         for(pin_2D const p : pins){
             points.push_back(p.pos);
         }
@@ -302,8 +296,8 @@ void solve_linear_system(netlist const & circuit, placement_t & pl, point<linear
     assert(L.y_.internal_size() == y_guess.size());
 
     for(index_t i=0; i<pl.cell_cnt(); ++i){
-        x_guess[i] = pl.positions_[i].x_;
-        y_guess[i] = pl.positions_[i].y_;
+        x_guess[i] = static_cast<float_t>(pl.positions_[i].x_);
+        y_guess[i] = static_cast<float_t>(pl.positions_[i].y_);
     }
     #pragma omp parallel sections num_threads(2)
     {
@@ -315,11 +309,11 @@ void solve_linear_system(netlist const & circuit, placement_t & pl, point<linear
     for(index_t i=0; i<pl.cell_cnt(); ++i){
         if( (circuit.get_cell(i).attributes & XMovable) != 0){
             assert(std::isfinite(x_sol[i]));
-            pl.positions_[i].x_ = x_sol[i];
+            pl.positions_[i].x_ = static_cast<int_t>(x_sol[i]);
         }
         if( (circuit.get_cell(i).attributes & YMovable) != 0){
             assert(std::isfinite(y_sol[i]));
-            pl.positions_[i].y_ = y_sol[i];
+            pl.positions_[i].y_ = static_cast<int_t>(y_sol[i]);
         }
     }
 }
@@ -342,7 +336,7 @@ std::vector<float_t> get_area_scales(netlist const & circuit){
 
 point<linear_system> get_pulling_forces (netlist const & circuit, placement_t const & pl, float_t typical_distance){
     point<linear_system> L = empty_linear_systems(circuit, pl);
-    float_t typical_force = 1.0 / typical_distance;
+    float_t typical_force = 1.0f / typical_distance;
     std::vector<float_t> scaling = get_area_scales(circuit);
     for(index_t i=0; i<pl.cell_cnt(); ++i){
         L.x_.add_anchor(
@@ -364,11 +358,11 @@ point<linear_system> get_linear_pulling_forces (netlist const & circuit, placeme
     std::vector<float_t> scaling = get_area_scales(circuit);
     for(index_t i=0; i<LB_pl.cell_cnt(); ++i){
         L.x_.add_anchor(
-            force * scaling[i] / (std::max(std::abs(UB_pl.positions_[i].x_ - LB_pl.positions_[i].x_), min_distance)),
+            force * scaling[i] / (std::max(static_cast<float_t>(std::abs(UB_pl.positions_[i].x_ - LB_pl.positions_[i].x_)), min_distance)),
             i, UB_pl.positions_[i].x_
         );
         L.y_.add_anchor(
-            force * scaling[i] / (std::max(std::abs(UB_pl.positions_[i].y_ - LB_pl.positions_[i].y_), min_distance)),
+            force * scaling[i] / (std::max(static_cast<float_t>(std::abs(UB_pl.positions_[i].y_ - LB_pl.positions_[i].y_)), min_distance)),
             i, UB_pl.positions_[i].y_
         );
     }
@@ -383,11 +377,14 @@ region_distribution get_rough_legalizer(netlist const & circuit, placement_t con
 
     for(index_t i=0; i<circuit.cell_cnt(); ++i){
         auto C = circuit.get_cell(i);
+        auto pos = point<float_t>(pl.positions_[i]);
+        auto S = point<float_t>(C.size);
+
         if((C.attributes & (XMovable|YMovable)) != 0){
-            movable_cells.push_back(region_distribution::movable_cell(C.area, pl.positions_[i], i));
+            movable_cells.push_back(region_distribution::movable_cell(C.area, pos + 0.5f * S, i));
         }
         else{
-            fixed_cells.push_back(region_distribution::fixed_cell(C.size, pl.positions_[i]));
+            fixed_cells.push_back(region_distribution::fixed_cell(C.size, pos + 0.5f * S));
         }
     }
 
@@ -397,7 +394,7 @@ region_distribution get_rough_legalizer(netlist const & circuit, placement_t con
 void get_rough_legalization(netlist const & circuit, placement_t & pl, region_distribution const & legalizer){
     auto exportation = legalizer.export_spread_positions_linear();
     for(auto const C : exportation){
-        pl.positions_[C.index_in_placement_] = C.pos_;
+        pl.positions_[C.index_in_placement_] = static_cast<point<int_t> >(C.pos_ - 0.5f * static_cast<point<float_t> >(circuit.get_cell(C.index_in_placement_).size));
     }
 }
 
@@ -406,10 +403,10 @@ float_t get_mean_linear_disruption(netlist const & circuit, placement_t const & 
     float_t tot_area = 0.0;
     for(index_t i=0; i<circuit.cell_cnt(); ++i){
         float_t area = static_cast<float_t>(circuit.get_cell(i).area);
-        point<float_t> diff = LB_pl.positions_[i] - UB_pl.positions_[i];
+        point<int_t> diff = LB_pl.positions_[i] - UB_pl.positions_[i];
 
-        if( (circuit.get_cell(i).attributes & XMovable) == 0.0) assert(diff.x_ == 0.0);
-        if( (circuit.get_cell(i).attributes & YMovable) == 0.0) assert(diff.y_ == 0.0);
+        if( (circuit.get_cell(i).attributes & XMovable) == 0) assert(diff.x_ == 0);
+        if( (circuit.get_cell(i).attributes & YMovable) == 0) assert(diff.y_ == 0);
 
         tot_cost += area * (std::abs(diff.x_) + std::abs(diff.y_));
         tot_area += area;
@@ -422,10 +419,10 @@ float_t get_mean_quadratic_disruption(netlist const & circuit, placement_t const
     float_t tot_area = 0.0;
     for(index_t i=0; i<circuit.cell_cnt(); ++i){
         float_t area = static_cast<float_t>(circuit.get_cell(i).area);
-        point<float_t> diff = LB_pl.positions_[i] - UB_pl.positions_[i];
+        point<int_t> diff = LB_pl.positions_[i] - UB_pl.positions_[i];
 
-        if( (circuit.get_cell(i).attributes & XMovable) == 0.0) assert(diff.x_ == 0.0);
-        if( (circuit.get_cell(i).attributes & YMovable) == 0.0) assert(diff.y_ == 0.0);
+        if( (circuit.get_cell(i).attributes & XMovable) == 0) assert(diff.x_ == 0);
+        if( (circuit.get_cell(i).attributes & YMovable) == 0) assert(diff.y_ == 0);
 
         float_t manhattan = (std::abs(diff.x_) + std::abs(diff.y_));
         tot_cost += area * manhattan * manhattan;

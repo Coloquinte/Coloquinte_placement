@@ -6,10 +6,10 @@
 
 namespace coloquinte{
 
-float_t MST_length(std::vector<point<float_t> > const & pins);
-float_t RSMT_length(std::vector<point<float_t> > const & pins, index_t exactitude_limit);
-std::vector<std::pair<index_t, index_t> > get_MST_topology(std::vector<point<float_t> > const & pins);
-point<std::vector<std::pair<index_t, index_t> > > get_RSMT_topology(std::vector<point<float_t> > const & pins, index_t exactitude_limit);
+std::int64_t MST_length(std::vector<point<int_t> > const & pins);
+std::int64_t RSMT_length(std::vector<point<int_t> > const & pins, index_t exactitude_limit);
+std::vector<std::pair<index_t, index_t> > get_MST_topology(std::vector<point<int_t> > const & pins);
+point<std::vector<std::pair<index_t, index_t> > > get_RSMT_topology(std::vector<point<int_t> > const & pins, index_t exactitude_limit);
 
 template<int pin_cnt>
 struct Hconnectivity{
@@ -21,21 +21,21 @@ struct Hconnectivity{
     typedef std::pair<index_t, index_t> edge_t;
 
     struct minmax_t{
-        float_t min, max;
+        int_t min, max;
 
-        minmax_t(float_t mn, float_t mx) : min(mn), max(mx) {}
+        minmax_t(int_t mn, int_t mx) : min(mn), max(mx) {}
         minmax_t() {}
         void merge(minmax_t const o){
             min = std::min(o.max, min);
             max = std::max(o.min, max);
         }
-        void merge(float_t const p){
+        void merge(int_t const p){
             min = std::min(p, min);
             max = std::max(p, max);
         }
     };
 
-    float_t get_wirelength(std::array<point<float_t>, pin_cnt> const sorted_points) const{
+    int_t get_wirelength(std::array<point<int_t>, pin_cnt> const sorted_points) const{
         std::array<minmax_t, pin_cnt-2> minmaxs;
         for(index_t i=0; i<pin_cnt-2; ++i){
             minmaxs[i] = minmax_t(sorted_points[i+1].y_, sorted_points[i+1].y_);
@@ -46,7 +46,7 @@ struct Hconnectivity{
         for(std::uint8_t const E : connexions){
             minmaxs[(E >> 4)].merge(minmaxs[(E & 15u)]);
         }
-        float_t cost = sorted_points.back().x_ - sorted_points.front().x_ + sorted_points[b_con+1].x_ - sorted_points[e_con+1].x_;
+        int_t cost = sorted_points.back().x_ - sorted_points.front().x_ + sorted_points[b_con+1].x_ - sorted_points[e_con+1].x_;
         for(std::uint8_t const E : connexions){
             cost += std::abs(sorted_points[(E >> 4) +1].x_ - sorted_points[(E & 15u) +1].x_);
         }
@@ -56,7 +56,7 @@ struct Hconnectivity{
         return cost;
     }
 
-    std::array<edge_t, pin_cnt-1> get_x_topology(std::array<point<float_t>, pin_cnt> const sorted_points) const{
+    std::array<edge_t, pin_cnt-1> get_x_topology(std::array<point<int_t>, pin_cnt> const sorted_points) const{
         std::array<edge_t, pin_cnt-1> ret;
         std::uint8_t b_con = extremes & 15u, e_con = extremes >> 4;
         ret[0] = edge_t(0, b_con+1);

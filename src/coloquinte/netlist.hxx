@@ -11,10 +11,10 @@ namespace coloquinte{
 
 // Structures for construction and circuit_loader
 struct temporary_pin{
-    point<float_t> offset;
+    point<int_t> offset;
     index_t cell_ind, net_ind;
     temporary_pin(){}
-    temporary_pin(point<float_t> offs, index_t c, index_t n) : offset(offs), cell_ind(c), net_ind(n){}
+    temporary_pin(point<int_t> offs, index_t c, index_t n) : offset(offs), cell_ind(c), net_ind(n){}
 };
 
 struct temporary_cell{
@@ -28,16 +28,16 @@ struct temporary_cell{
 };
 
 struct temporary_net{
-    float_t weight;
+    int_t weight;
     index_t list_index;
     temporary_net(){}
-    temporary_net(index_t ind, float_t wght) : weight(wght), list_index(ind){}
+    temporary_net(index_t ind, int_t wght) : weight(wght), list_index(ind){}
 };
 
 
 // Main class
 class netlist{
-    std::vector<float_t>       net_weights_;
+    std::vector<int_t>       net_weights_;
 
     std::vector<capacity_t>    cell_areas_;
     std::vector<point<int_t> > cell_sizes_;
@@ -50,7 +50,7 @@ class netlist{
     // Optimized sparse storage for nets
     std::vector<index_t>         net_limits_;
     std::vector<index_t>         cell_indexes_;
-    std::vector<point<float_t> > pin_offsets_;
+    std::vector<point<int_t> > pin_offsets_;
 
     // Sparse storage from cell to net appartenance
     std::vector<index_t>         cell_limits_;
@@ -64,9 +64,9 @@ class netlist{
     void selfcheck() const;
 
     struct pin_t{
-        point<float_t> offset;
+        point<int_t> offset;
         index_t cell_ind, net_ind;
-        pin_t(point<float_t> offs, index_t c, index_t n) : offset(offs), cell_ind(c), net_ind(n){}
+        pin_t(point<int_t> offs, index_t c, index_t n) : offset(offs), cell_ind(c), net_ind(n){}
     };
 
     class net_pin_iterator{
@@ -129,7 +129,7 @@ class netlist{
     };
 
     struct internal_net{
-        float_t weight;
+        int_t weight;
         netlist const & N;
         index_t index;
         index_t pin_cnt;
@@ -225,6 +225,18 @@ inline netlist::netlist(std::vector<temporary_cell> cells, std::vector<temporary
     }
     cell_limits_.back() = pins.size();
 }
+
+struct placement_t{
+    std::vector<point<int_t> > positions_;
+    std::vector<point<bool> > orientations_;
+
+    index_t cell_cnt() const{
+        assert(positions_.size() == orientations_.size());
+        return positions_.size();
+    }
+
+    void selfcheck() const;
+};
 
 } // namespace coloquinte
 

@@ -16,8 +16,8 @@ const index_t null_ind = std::numeric_limits<index_t>::max();
 struct detailed_placement{
     struct internal_cell{
         point<int_t> position;
-        int_t width;
         index_t row;
+        int_t width;
 
         bool x_orientation, y_orientation;
     };

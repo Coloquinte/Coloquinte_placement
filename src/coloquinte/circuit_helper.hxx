@@ -10,27 +10,27 @@ namespace gp{
 
 struct pin_1D{
     index_t cell_ind;
-    float_t pos;
-    float_t offs;
+    int_t pos;
+    int_t offs;
     bool movable;
 
     bool operator<(pin_1D const o) const { return pos < o.pos; }
 
-    pin_1D(index_t c, float_t p, float_t o, bool m) : cell_ind(c), pos(p), offs(o), movable(m){}
+    pin_1D(index_t c, int_t p, int_t o, bool m) : cell_ind(c), pos(p), offs(o), movable(m){}
 };
 struct pin_2D{
     index_t        cell_ind;
-    point<float_t> pos;
-    point<float_t> offs;
+    point<int_t> pos;
+    point<int_t> offs;
     bool movable;
 
-    pin_2D(index_t c, point<float_t> p, point<float_t> o, bool m) : cell_ind(c), pos(p), offs(o), movable(m){}
+    pin_2D(index_t c, point<int_t> p, point<int_t> o, bool m) : cell_ind(c), pos(p), offs(o), movable(m){}
     pin_1D x() const{ return pin_1D(cell_ind, pos.x_, offs.x_, movable); }
     pin_1D y() const{ return pin_1D(cell_ind, pos.y_, offs.y_, movable); }
 };
 
-inline float_t dist(pin_2D const a, pin_2D const b){
-    point<float_t> diff = a.pos - b.pos;
+inline int_t dist(pin_2D const a, pin_2D const b){
+    point<int_t> diff = a.pos - b.pos;
     return std::abs(diff.x_) + std::abs(diff.y_);
 }
 
@@ -40,8 +40,10 @@ inline std::vector<pin_2D>         get_pins_2D(netlist const & circuit, placemen
         assert(std::isfinite(pl.positions_[p.cell_ind].x_) and std::isfinite(pl.positions_[p.cell_ind].y_));
         assert(std::isfinite(pl.orientations_[p.cell_ind].x_) and std::isfinite(pl.orientations_[p.cell_ind].y_));
 
-        point<float_t> offs = static_cast<point<float_t> >(p.offset) * pl.orientations_[p.cell_ind];
-        point<float_t> pos  = static_cast<point<float_t> >(offs)     + pl.positions_[p.cell_ind];
+        point<int_t> offs;
+            offs.x_ = pl.orientations_[p.cell_ind].x_ ? p.offset.x_ : circuit.get_cell(p.cell_ind).size.x_ - p.offset.x_;
+            offs.y_ = pl.orientations_[p.cell_ind].y_ ? p.offset.y_ : circuit.get_cell(p.cell_ind).size.y_ - p.offset.y_;
+        point<int_t> pos  = offs + pl.positions_[p.cell_ind];
 
         assert(std::isfinite(offs.x_) and std::isfinite(offs.y_));
         assert(std::isfinite(pos.x_) and std::isfinite(pos.y_));
@@ -58,14 +60,17 @@ inline point<std::vector<pin_1D> > get_pins_1D(netlist const & circuit, placemen
         assert(std::isfinite(pl.positions_[p.cell_ind].x_) and std::isfinite(pl.positions_[p.cell_ind].y_));
         assert(std::isfinite(pl.orientations_[p.cell_ind].x_) and std::isfinite(pl.orientations_[p.cell_ind].y_));
 
-        point<float_t> offs = static_cast<point<float_t> >(p.offset) * pl.orientations_[p.cell_ind];
-        point<float_t> pos  = static_cast<point<float_t> >(offs)     + pl.positions_[p.cell_ind];
+        point<int_t> offs;
+            offs.x_ = pl.orientations_[p.cell_ind].x_ ? p.offset.x_ : circuit.get_cell(p.cell_ind).size.x_ - p.offset.x_;
+            offs.y_ = pl.orientations_[p.cell_ind].y_ ? p.offset.y_ : circuit.get_cell(p.cell_ind).size.y_ - p.offset.y_;
+        point<int_t> pos  = offs + pl.positions_[p.cell_ind];
 
         assert(std::isfinite(offs.x_) and std::isfinite(offs.y_));
         assert(std::isfinite(pos.x_) and std::isfinite(pos.y_));
 
         bool x_movable = (circuit.get_cell(p.cell_ind).attributes & XMovable) != 0;
         bool y_movable = (circuit.get_cell(p.cell_ind).attributes & YMovable) != 0;
+
         ret.x_.push_back(pin_1D(p.cell_ind, pos.x_, offs.x_, x_movable));
         ret.y_.push_back(pin_1D(p.cell_ind, pos.y_, offs.y_, y_movable));
     }

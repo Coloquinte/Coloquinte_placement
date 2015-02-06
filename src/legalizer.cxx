@@ -9,17 +9,17 @@
 namespace coloquinte{
 namespace dp{
 
-void get_result(netlist const & circuit, detailed_placement const & dpl, gp::placement_t & gpl){
+void get_result(netlist const & circuit, detailed_placement const & dpl, placement_t & gpl){
     for(index_t c=0; c<circuit.cell_cnt(); ++c){
         if( (circuit.get_cell(c).attributes & XMovable) != 0)
-            gpl.positions_[c].x_ = static_cast<float_t>(dpl.cells_[c].position.x_) + 0.5f * circuit.get_cell(c).size.x_;
+            gpl.positions_[c].x_ = dpl.cells_[c].position.x_;
         if( (circuit.get_cell(c).attributes & YMovable) != 0)
-            gpl.positions_[c].y_ = static_cast<float_t>(dpl.cells_[c].position.y_) + 0.5f * circuit.get_cell(c).size.y_;
+            gpl.positions_[c].y_ = dpl.cells_[c].position.y_;
 
         if( (circuit.get_cell(c).attributes & XFlippable) != 0)
-            gpl.orientations_[c].x_ = dpl.cells_[c].x_orientation ? 1.0 : -1.0;
+            gpl.orientations_[c].x_ = dpl.cells_[c].x_orientation;
         if( (circuit.get_cell(c).attributes & YFlippable) != 0)
-            gpl.orientations_[c].y_ = dpl.cells_[c].y_orientation ? 1.0 : -1.0;
+            gpl.orientations_[c].y_ = dpl.cells_[c].y_orientation;
     }
 }
 
@@ -353,7 +353,7 @@ std::vector<cell_leg_properties> good_legalize(
 }
 
 
-detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl, box<int_t> surface, int_t row_height){
+detailed_placement legalize(netlist const & circuit, placement_t const & pl, box<int_t> surface, int_t row_height){
     if(row_height <= 0) throw std::runtime_error("The rows' height should be positive\n");
 
     index_t nbr_rows = (surface.y_max_ - surface.y_min_) / row_height;
@@ -370,7 +370,7 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
         // Assumes fixed if not both XMovable and YMovable
         if( (cur.attributes & XMovable) != 0 && (cur.attributes & YMovable) != 0){
             // Just truncate the position we target
-            point<int_t> target_pos = pl.positions_[i] - 0.5f * static_cast<point<float_t> >(cur.size);
+            point<int_t> target_pos = pl.positions_[i];
             index_t cur_cell_rows = (cur.size.y_ + row_height -1) / row_height;
             cells.push_back(cell_to_leg(target_pos.x_, target_pos.y_, i, cur.size.x_, cur_cell_rows));
             cell_heights[i] = cur_cell_rows;
@@ -378,10 +378,10 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
         }
         else{
             // In each row, we put the index of the fixed cell and the range that is already occupied
-            int_t low_x_pos  = std::floor(pl.positions_[i].x_ - 0.5f * static_cast<float_t>(cur.size.x_)),
-                  hgh_x_pos  = std::ceil (pl.positions_[i].x_ + 0.5f * static_cast<float_t>(cur.size.x_)),
-                  low_y_pos  = std::floor(pl.positions_[i].y_ - 0.5f * static_cast<float_t>(cur.size.y_)),
-                  hgh_y_pos  = std::ceil (pl.positions_[i].y_ + 0.5f * static_cast<float_t>(cur.size.y_));
+            int_t low_x_pos  = pl.positions_[i].x_,
+                  hgh_x_pos  = pl.positions_[i].x_ + cur.size.x_,
+                  low_y_pos  = pl.positions_[i].y_,
+                  hgh_y_pos  = pl.positions_[i].y_ + cur.size.y_;
 
             detailed_cells[i].position.x_ = low_x_pos;
             detailed_cells[i].position.y_ = low_y_pos;
@@ -435,8 +435,8 @@ detailed_placement legalize(netlist const & circuit, gp::placement_t const & pl,
 
     // Get the orientations
     for(index_t c=0; c<circuit.cell_cnt(); ++c){
-        detailed_cells[c].x_orientation = (pl.orientations_[c].x_ >= 0.0);
-        detailed_cells[c].y_orientation = (pl.orientations_[c].y_ >= 0.0);
+        detailed_cells[c].x_orientation = pl.orientations_[c].x_;
+        detailed_cells[c].y_orientation = pl.orientations_[c].y_;
     }
 
     return detailed_placement(
