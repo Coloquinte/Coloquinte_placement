@@ -12,14 +12,14 @@ namespace dp{
 void get_result(netlist const & circuit, detailed_placement const & dpl, placement_t & gpl){
     for(index_t c=0; c<circuit.cell_cnt(); ++c){
         if( (circuit.get_cell(c).attributes & XMovable) != 0)
-            gpl.positions_[c].x_ = dpl.cells_[c].position.x_;
+            gpl.positions_[c].x_ = dpl.plt_.positions_[c].x_;
         if( (circuit.get_cell(c).attributes & YMovable) != 0)
-            gpl.positions_[c].y_ = dpl.cells_[c].position.y_;
+            gpl.positions_[c].y_ = dpl.plt_.positions_[c].y_;
 
         if( (circuit.get_cell(c).attributes & XFlippable) != 0)
-            gpl.orientations_[c].x_ = dpl.cells_[c].x_orientation;
+            gpl.orientations_[c].x_ = dpl.plt_.orientations_[c].x_;
         if( (circuit.get_cell(c).attributes & YFlippable) != 0)
-            gpl.orientations_[c].y_ = dpl.cells_[c].y_orientation;
+            gpl.orientations_[c].y_ = dpl.plt_.orientations_[c].y_;
     }
 }
 
@@ -362,7 +362,8 @@ detailed_placement legalize(netlist const & circuit, placement_t const & pl, box
     std::vector<std::vector<fixed_cell_interval> > row_occupation(nbr_rows);
     std::vector<cell_to_leg> cells;
 
-    std::vector<detailed_placement::internal_cell> detailed_cells(circuit.cell_cnt());
+    placement_t new_placement = pl;
+    std::vector<index_t> placement_rows(circuit.cell_cnt());
     std::vector<index_t> cell_heights(circuit.cell_cnt());
 
     for(index_t i=0; i<circuit.cell_cnt(); ++i){
@@ -374,7 +375,6 @@ detailed_placement legalize(netlist const & circuit, placement_t const & pl, box
             index_t cur_cell_rows = (cur.size.y_ + row_height -1) / row_height;
             cells.push_back(cell_to_leg(target_pos.x_, target_pos.y_, i, cur.size.x_, cur_cell_rows));
             cell_heights[i] = cur_cell_rows;
-            detailed_cells[i].width = cur.size.x_;
         }
         else{
             // In each row, we put the index of the fixed cell and the range that is already occupied
@@ -383,11 +383,9 @@ detailed_placement legalize(netlist const & circuit, placement_t const & pl, box
                   low_y_pos  = pl.positions_[i].y_,
                   hgh_y_pos  = pl.positions_[i].y_ + cur.size.y_;
 
-            detailed_cells[i].position.x_ = low_x_pos;
-            detailed_cells[i].position.y_ = low_y_pos;
-            detailed_cells[i].width = hgh_x_pos - low_x_pos;
+            new_placement.positions_[i] = point<int_t>(low_x_pos, low_y_pos);
             if(hgh_y_pos <= surface.y_min_ or low_y_pos >= surface.y_max_ or hgh_x_pos <= surface.x_min_ or low_x_pos >= surface.x_max_){
-                detailed_cells[i].row = null_ind;
+                placement_rows[i] = null_ind;
                 cell_heights[i] = 0;
             }
             else{
@@ -402,7 +400,7 @@ detailed_placement legalize(netlist const & circuit, placement_t const & pl, box
                 index_t last_row = (index_t) (rnd_hgh_y_pos - surface.y_min_ + row_height - 1) / row_height; // Exclusive: if the cell spans the next row, i.e. pos % row_height >= 0, include it too
                 assert(last_row <= nbr_rows);
 
-                detailed_cells[i].row = first_row;
+                placement_rows[i] = first_row;
                 cell_heights[i] = last_row - first_row;
                 for(index_t r=first_row; r<last_row; ++r){
                     row_occupation[r].push_back(fixed_cell_interval(rnd_low_x_pos, rnd_hgh_x_pos, i));
@@ -428,19 +426,13 @@ detailed_placement legalize(netlist const & circuit, placement_t const & pl, box
     );
 
     for(cell_leg_properties C : final_cells){
-        detailed_cells[C.ind].position.x_ = C.x_pos;
-        detailed_cells[C.ind].position.y_ = static_cast<int_t>(C.row_pos) * row_height + surface.y_min_;
-        detailed_cells[C.ind].row = C.row_pos;
-    }
-
-    // Get the orientations
-    for(index_t c=0; c<circuit.cell_cnt(); ++c){
-        detailed_cells[c].x_orientation = pl.orientations_[c].x_;
-        detailed_cells[c].y_orientation = pl.orientations_[c].y_;
+        new_placement.positions_[C.ind] = point<int_t>(C.x_pos, static_cast<int_t>(C.row_pos) * row_height + surface.y_min_);
+        placement_rows[C.ind] = C.row_pos;
     }
 
     return detailed_placement(
-        detailed_cells,
+        new_placement,
+        placement_rows,
         cell_heights,
         cells_by_rows,
         surface.x_min_, surface.x_max_,

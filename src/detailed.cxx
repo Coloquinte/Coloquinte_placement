@@ -13,17 +13,19 @@ namespace dp{
 
 
 detailed_placement::detailed_placement(
-        std::vector<internal_cell> const cells,
-        std::vector<index_t> const cell_heights,
-        std::vector<std::vector<index_t> > const rows,
+        placement_t pl,
+        std::vector<index_t> placement_rows,
+        std::vector<index_t> cell_heights,
+        std::vector<std::vector<index_t> > rows,
         int_t min_x, int_t max_x,
         int_t y_origin,
         index_t nbr_rows, int_t row_height
     )
     :
+        plt_(pl),
+        cell_rows_(placement_rows),
         min_x_(min_x), max_x_(max_x),
-        y_origin_(y_origin),
-        cells_(cells)
+        y_origin_(y_origin)
     {
 
     assert(row_height > 0);
@@ -63,7 +65,6 @@ detailed_placement::detailed_placement(
             neighbours_[neighbour_index(c2, r)].first  = c1;
 
             // The positions are correct
-            assert(cells_[c1].position.x_ + cells_[c1].width <= cells_[c2].position.x_ );
         }
     }
 
@@ -79,35 +80,30 @@ void detailed_placement::selfcheck() const{
     assert(row_first_cells_.size() == row_last_cells_.size());
 
     for(index_t i=0; i<cell_cnt(); ++i){
-        internal_cell const c = cells_[i];
         for(index_t l=0; l<cell_height(i); ++l){
             // not verified now since we don't modify the position for the obstacles
             // : assert(c.position.x_ >= min_x_ and c.position.x_ + c.width <= max_x_);
 
             index_t n_ind = l + neighbours_limits_[i];
-            assert(c.row + cell_height(i) <= row_cnt());
+            assert(cell_rows_[i] + cell_height(i) <= row_cnt());
 
             if(neighbours_[n_ind].first != null_ind){
                 index_t oi = neighbours_[n_ind].first;
-                auto const oc = cells_[oi];
                 // Correct neighbour position
-                assert(c.position.x_ >= oc.position.x_ + oc.width);
-                assert(neighbours_[neighbour_index(oi, c.row+l)].second == i);
+                assert(neighbours_[neighbour_index(oi, cell_rows_[i]+l)].second == i);
             }
             else{
                 // Beginning of a row
-                assert(row_first_cells_[c.row + l] == i);
+                assert(row_first_cells_[cell_rows_[i] + l] == i);
             }
             if(neighbours_[n_ind].second != null_ind){
                 index_t oi = neighbours_[n_ind].second;
-                auto const oc = cells_[oi];
                 // Correct neighbour position
-                assert(c.position.x_ + c.width <= oc.position.x_);
-                assert(neighbours_[neighbour_index(oi, c.row+l)].first == i);
+                assert(neighbours_[neighbour_index(oi, cell_rows_[i]+l)].first == i);
             }
             else{
                 // End of a row
-                assert(row_last_cells_[c.row + l] == i);
+                assert(row_last_cells_[cell_rows_[i] + l] == i);
             }
         }
     }
@@ -117,8 +113,8 @@ void detailed_placement::swap_topologies(index_t c1, index_t c2){
     assert(cell_height(c1) == cell_height(c2));
     assert(cell_height(c1) == 1 and cell_height(c2) == 1);
 
-    index_t row_c1 = cells_[c1].row,
-            row_c2 = cells_[c2].row;
+    index_t row_c1 = cell_rows_[c1],
+            row_c2 = cell_rows_[c2];
 
     index_t b_c1 = neighbours_[neighbours_limits_[c1]].first;
     index_t b_c2 = neighbours_[neighbours_limits_[c2]].first;
@@ -141,21 +137,19 @@ void detailed_placement::swap_topologies(index_t c1, index_t c2){
 
     // Swap the properties in both cells
     std::swap(neighbours_[neighbours_limits_[c1]], neighbours_[neighbours_limits_[c2]]);
-    std::swap(cells_[c1].row, cells_[c2].row);
+    std::swap(cell_rows_[c1], cell_rows_[c2]);
 }
 
-std::pair<int_t, int_t> detailed_placement::get_limit_positions(index_t c){
+std::pair<int_t, int_t> detailed_placement::get_limit_positions(netlist const & circuit, index_t c){
     auto ret = std::pair<int_t, int_t>(min_x_, max_x_);
     for(index_t l=neighbours_limits_[c]; l<neighbours_limits_[c+1]; ++l){
         index_t b_i = neighbours_[l].first,
                 a_i = neighbours_[l].second;
         if(b_i != null_ind){
-            auto & b_c = cells_[b_i];
-            ret.first  = std::max(ret.first,  b_c.position.x_ + b_c.width);
+            ret.first  = std::max(ret.first,  plt_.positions_[b_i].x_ + circuit.get_cell(b_i).size.x_);
         }
         if(a_i != null_ind){
-            auto & a_c = cells_[a_i];
-            ret.second = std::min(ret.second, a_c.position.x_);
+            ret.second = std::min(ret.second, plt_.positions_[a_i].x_);
         }
     }
     return ret;
@@ -168,7 +162,7 @@ index_t detailed_placement::get_first_cell_on_row(index_t r){
         assert(c != next_c);
         c = next_c;
     }
-    assert(c == null_ind or cells_[c].row == r);
+    assert(c == null_ind or cell_rows_[c] == r);
     return c;
 }
 
@@ -178,7 +172,7 @@ index_t detailed_placement::get_next_cell_on_row(index_t c, index_t r){
         assert(c != next_c);
         c = next_c;
     }while(c != null_ind and cell_height(c) != 1);
-    assert(c == null_ind or cells_[c].row == r);
+    assert(c == null_ind or cell_rows_[c] == r);
     return c;
 }
 
@@ -189,11 +183,11 @@ void detailed_placement::reorder_standard_cells(std::vector<index_t> const old_o
     index_t before_row = neighbours_[neighbours_limits_[old_order.front()]].first;
     index_t after_row  = neighbours_[neighbours_limits_[old_order.back() ]].second;
 
-    index_t r = cells_[new_order.front()].row;
+    index_t r = cell_rows_[new_order.front()];
 
     for(index_t i=0; i<new_order.size(); ++i){
         assert(cell_height(new_order[i]) == 1);
-        assert(cells_[new_order[i]].row == r);
+        assert(cell_rows_[new_order[i]] == r);
 
         auto & nghs = neighbours_[neighbours_limits_[new_order[i]]];
         if(i > 0){
@@ -247,27 +241,24 @@ void optimize_on_topology(netlist const & circuit, detailed_placement & pl){
 
     // Now we add every positional constraint, which becomes an arc in the min-cost flow problem
     for(index_t i=0; i<circuit.cell_cnt(); ++i){ // The cells
-        auto c = pl.cells_[i];
         for(index_t l = pl.neighbours_limits_[i]; l < pl.neighbours_limits_[i+1]; ++l){
             index_t oi = pl.neighbours_[l].second;
             if(oi == null_ind) continue;
-            auto oc = pl.cells_[oi];
-            assert(c.position.x_ + c.width <= oc.position.x_);
             
             if((circuit.get_cell(i).attributes & XMovable) != 0 and (circuit.get_cell(oi).attributes & XMovable) != 0){
                 // Two movable cells: OK
                 auto A = g.addArc(cell_nodes[oi], cell_nodes[i]);
-                constraint_arcs.push_back(arc_pair(A, -c.width));
+                constraint_arcs.push_back(arc_pair(A, -circuit.get_cell(i).size.x_));
             }
             else if((circuit.get_cell( i).attributes & XMovable) != 0){
                 // The cell c is movable and constrained on the right
                 auto A = g.addArc(fixed, cell_nodes[i]);
-                constraint_arcs.push_back(arc_pair(A, oc.position.x_ - c.width));
+                constraint_arcs.push_back(arc_pair(A, pl.plt_.positions_[oi].x_ - circuit.get_cell(i).size.x_));
             }
             else if((circuit.get_cell(oi).attributes & XMovable) != 0){
                 // The cell oc is movable and constrained on the left
                 auto A = g.addArc(cell_nodes[oi], fixed);
-                constraint_arcs.push_back(arc_pair(A, -c.position.x_ - c.width));
+                constraint_arcs.push_back(arc_pair(A, -pl.plt_.positions_[i].x_ - circuit.get_cell(i).size.x_));
             }
         }
     }
@@ -284,7 +275,7 @@ void optimize_on_topology(netlist const & circuit, detailed_placement & pl){
         index_t rc = pl.row_last_cells_[r];
         if(rc != null_ind and (circuit.get_cell(rc).attributes & XMovable) != 0){
             auto Ar = g.addArc(fixed, cell_nodes[rc]);
-            constraint_arcs.push_back(arc_pair(Ar, pl.max_x_ - pl.cells_[rc].width));
+            constraint_arcs.push_back(arc_pair(Ar, pl.max_x_ - circuit.get_cell(rc).size.x_));
         }
     }
     
@@ -294,7 +285,7 @@ void optimize_on_topology(netlist const & circuit, detailed_placement & pl){
         assert(circuit.get_net(n).pin_cnt > 0);
         for(auto p : circuit.get_net(n)){
             index_t c = p.cell_ind;
-            int_t pin_offs = (pl.cells_[c].x_orientation ? p.offset.x_ : pl.cells_[c].width - p.offset.x_); // Offset to the beginning of the cell
+            int_t pin_offs = (pl.plt_.orientations_[c].x_ ? p.offset.x_ : circuit.get_cell(c).size.x_ - p.offset.x_); // Offset to the beginning of the cell
             if((circuit.get_cell(c).attributes & XMovable) != 0){
                 Arc Al = g.addArc(cell_nodes[c], Lnet_nodes[n]);
                 constraint_arcs.push_back(arc_pair(Al, pin_offs));
@@ -303,9 +294,9 @@ void optimize_on_topology(netlist const & circuit, detailed_placement & pl){
             }
             else{ // Fixed offset
                 auto Al = g.addArc(fixed, Lnet_nodes[n]);
-                constraint_arcs.push_back(arc_pair(Al, pl.cells_[c].position.x_ + pin_offs));
+                constraint_arcs.push_back(arc_pair(Al, pl.plt_.positions_[c].x_ + pin_offs));
                 auto Ar = g.addArc(Unet_nodes[n], fixed);
-                constraint_arcs.push_back(arc_pair(Ar, - pl.cells_[c].position.x_ - pin_offs));
+                constraint_arcs.push_back(arc_pair(Ar, - pl.plt_.positions_[c].x_ - pin_offs));
             }
         }
     }
@@ -313,9 +304,8 @@ void optimize_on_topology(netlist const & circuit, detailed_placement & pl){
     // Then the only capacitated arcs: the ones for the nets
     std::vector<node_pair> net_supplies;
     for(index_t n=0; n<circuit.net_cnt(); ++n){
-        // TODO: use net weights
-        net_supplies.push_back(node_pair(Unet_nodes[n], 1));
-        net_supplies.push_back(node_pair(Lnet_nodes[n], -1));
+        net_supplies.push_back(node_pair(Unet_nodes[n],  circuit.get_net(n).weight));
+        net_supplies.push_back(node_pair(Lnet_nodes[n], -circuit.get_net(n).weight));
     }
 
     // Create the maps to have cost and capacity for the arcs
@@ -342,7 +332,7 @@ void optimize_on_topology(netlist const & circuit, detailed_placement & pl){
     // And we get the new positions as the dual values of the current solution (compared to the fixed pin) 
     for(index_t c=0; c<circuit.cell_cnt(); ++c){ // The cells
         if((circuit.get_cell(c).attributes & XMovable) != 0){
-            pl.cells_[c].position.x_ = ns.potential(cell_nodes[c]) - ns.potential(fixed);
+            pl.plt_.positions_[c].x_ = ns.potential(cell_nodes[c]) - ns.potential(fixed);
         }
     }
     pl.selfcheck();
@@ -359,10 +349,10 @@ inline std::int64_t get_nets_cost(netlist const & circuit, detailed_placement co
         auto maxs = point<int_t>(std::numeric_limits<int_t>::min(), std::numeric_limits<int_t>::max());
         for(netlist::pin_t p : circuit.get_net(n)){
             auto offs = point<int_t>(
-                pl.cells_[p.cell_ind].x_orientation ? p.offset.x_ : circuit.get_cell(p.cell_ind).size.x_-p.offset.x_,
-                pl.cells_[p.cell_ind].y_orientation ? p.offset.y_ : circuit.get_cell(p.cell_ind).size.y_-p.offset.y_
+                pl.plt_.orientations_[p.cell_ind].x_ ? p.offset.x_ : circuit.get_cell(p.cell_ind).size.x_-p.offset.x_,
+                pl.plt_.orientations_[p.cell_ind].y_ ? p.offset.y_ : circuit.get_cell(p.cell_ind).size.y_-p.offset.y_
             );
-            point<int_t> pos = offs + pl.cells_[p.cell_ind].position;
+            point<int_t> pos = offs + pl.plt_.positions_[p.cell_ind];
             mins.x_ = std::min(mins.x_, pos.x_);
             mins.y_ = std::min(mins.y_, pos.y_);
             maxs.x_ = std::max(maxs.x_, pos.x_);
@@ -381,14 +371,14 @@ bool try_swap(netlist const & circuit, detailed_placement & pl, index_t c1, inde
     assert( (circuit.get_cell(c1).attributes & XMovable) != 0 and (circuit.get_cell(c1).attributes & YMovable) != 0);
     assert( (circuit.get_cell(c2).attributes & XMovable) != 0 and (circuit.get_cell(c2).attributes & YMovable) != 0);
 
-    auto c1_bnds = pl.get_limit_positions(c1),
-         c2_bnds = pl.get_limit_positions(c2);
+    auto c1_bnds = pl.get_limit_positions(circuit, c1),
+         c2_bnds = pl.get_limit_positions(circuit, c2);
 
     // Get the possible positions for a swap
     int_t swp_min_c1 = c2_bnds.first,
           swp_min_c2 = c1_bnds.first,
-          swp_max_c1 = c2_bnds.second - pl.cells_[c1].width,
-          swp_max_c2 = c1_bnds.second - pl.cells_[c2].width;
+          swp_max_c1 = c2_bnds.second - circuit.get_cell(c1).size.x_,
+          swp_max_c2 = c1_bnds.second - circuit.get_cell(c2).size.x_;
 
     if(swp_max_c1 >= swp_min_c1 and swp_max_c2 >= swp_min_c2){
         // Check both orientations of the cell
@@ -408,16 +398,16 @@ bool try_swap(netlist const & circuit, detailed_placement & pl, index_t c1, inde
         std::int64_t old_cost = get_nets_cost(circuit, pl, involved_nets);
 
         // Save the old values
-        int_t c1_x = pl.cells_[c1].position.x_;
-        int_t c2_x = pl.cells_[c2].position.x_;
-        int_t c1_y = pl.cells_[c1].position.y_;
-        int_t c2_y = pl.cells_[c2].position.y_;
+        int_t c1_x = pl.plt_.positions_[c1].x_;
+        int_t c2_x = pl.plt_.positions_[c2].x_;
+        int_t c1_y = pl.plt_.positions_[c1].y_;
+        int_t c2_y = pl.plt_.positions_[c2].y_;
 
         // Warning: won't work if the two cells don't have the same height
-        pl.cells_[c1].position.x_ = (swp_min_c1 + swp_max_c1) / 2;
-        pl.cells_[c2].position.x_ = (swp_min_c2 + swp_max_c2) / 2;
-        pl.cells_[c1].position.y_ = c2_y;
-        pl.cells_[c2].position.y_ = c1_y;
+        pl.plt_.positions_[c1].x_ = (swp_min_c1 + swp_max_c1) / 2;
+        pl.plt_.positions_[c2].x_ = (swp_min_c2 + swp_max_c2) / 2;
+        pl.plt_.positions_[c1].y_ = c2_y;
+        pl.plt_.positions_[c2].y_ = c1_y;
 
         std::int64_t swp_cost = get_nets_cost(circuit, pl, involved_nets);
 
@@ -429,10 +419,10 @@ bool try_swap(netlist const & circuit, detailed_placement & pl, index_t c1, inde
         }
         else{
             // Reset the old values
-            pl.cells_[c1].position.x_ = c1_x;
-            pl.cells_[c2].position.x_ = c2_x;
-            pl.cells_[c1].position.y_ = c1_y;
-            pl.cells_[c2].position.y_ = c2_y;
+            pl.plt_.positions_[c1].x_ = c1_x;
+            pl.plt_.positions_[c2].x_ = c2_x;
+            pl.plt_.positions_[c1].y_ = c1_y;
+            pl.plt_.positions_[c2].y_ = c2_y;
 
             // We didn't swap
             return false;
@@ -524,8 +514,7 @@ std::vector<net_properties> get_net_properties(netlist const & circuit, detailed
             else{ // Found a pin which remains fixed for this round
                 cur_net.external_pins = true;
 
-                auto loc_c = pl.cells_[p.cell_ind];
-                int_t pos = loc_c.position.x_ + (loc_c.x_orientation ? p.offset.x_ : loc_c.width - p.offset.x_);
+                int_t pos = pl.plt_.positions_[p.cell_ind].x_ + (pl.plt_.orientations_[p.cell_ind].x_ ? p.offset.x_ : circuit.get_cell(p.cell_ind).size.x_ - p.offset.x_);
                 cur_net.ext_pos_min = std::min(pos, cur_net.ext_pos_min);
                 cur_net.ext_pos_max = std::max(pos, cur_net.ext_pos_max);
             }
@@ -552,10 +541,10 @@ inline std::int64_t optimize_convex_sequence(netlist const & circuit, detailed_p
     std::vector<int_t> right_slopes(cells.size(), 0);
     for(auto const cur_net : net_props){
         if(cur_net.external_pins){
-            auto fst_c=pl.cells_[cells[cur_net.cell_fst]],
-                 lst_c=pl.cells_[cells[cur_net.cell_lst]];
-            int_t fst_pin_offs = (fst_c.x_orientation ? cur_net.offs_fst.first : fst_c.width - cur_net.offs_fst.second);
-            int_t lst_pin_offs = (lst_c.x_orientation ? cur_net.offs_lst.second : lst_c.width - cur_net.offs_lst.first);
+            int_t fst_pin_offs = (pl.plt_.orientations_[cur_net.cell_fst].x_ ?
+                cur_net.offs_fst.first : circuit.get_cell(cur_net.cell_fst).size.x_ - cur_net.offs_fst.second);
+            int_t lst_pin_offs = (pl.plt_.orientations_[cur_net.cell_lst].x_ ?
+                cur_net.offs_lst.second : circuit.get_cell(cur_net.cell_lst).size.x_ - cur_net.offs_lst.first);
 
             bounds.push_back(cell_bound(cur_net.cell_fst, static_cast<int_t>(std::round(cur_net.ext_pos_min - fst_pin_offs) ), cur_net.weight));
             bounds.push_back(cell_bound(cur_net.cell_lst, static_cast<int_t>(std::round(cur_net.ext_pos_max - lst_pin_offs) ), cur_net.weight));
@@ -572,9 +561,8 @@ inline std::int64_t optimize_convex_sequence(netlist const & circuit, detailed_p
     full_single_row OSRP;
     for(index_t i=0, j=0; i<cells.size(); ++i){
         index_t cur_cell_ind = cells[i];
-        auto cur_cell = pl.cells_[cur_cell_ind];
 
-        OSRP.push_cell(cur_cell.width, lower_lim, upper_lim);
+        OSRP.push_cell(circuit.get_cell(cur_cell_ind).size.x_, lower_lim, upper_lim);
         OSRP.push_slope(right_slopes[i]);
         for(; j<bounds.size() and bounds[j].c == i; ++j){
             OSRP.push_bound(bounds[j].pos, bounds[j].slope);
@@ -585,16 +573,16 @@ inline std::int64_t optimize_convex_sequence(netlist const & circuit, detailed_p
 
     std::int64_t cost = 0;
     for(auto const cur_net : net_props){
-        auto min_c=pl.cells_[cells[cur_net.cell_fst]],
-             max_c=pl.cells_[cells[cur_net.cell_lst]];
-        int_t min_pin_pos = positions[cur_net.cell_fst] + (min_c.x_orientation ? cur_net.offs_fst.first : min_c.width - cur_net.offs_fst.second);
-        int_t max_pin_pos = positions[cur_net.cell_lst] + (max_c.x_orientation ? cur_net.offs_lst.second : max_c.width - cur_net.offs_lst.first);
+        int_t fst_pin_offs = (pl.plt_.orientations_[cur_net.cell_fst].x_ ?
+            cur_net.offs_fst.first : circuit.get_cell(cur_net.cell_fst).size.x_ - cur_net.offs_fst.second);
+        int_t lst_pin_offs = (pl.plt_.orientations_[cur_net.cell_lst].x_ ?
+            cur_net.offs_lst.second : circuit.get_cell(cur_net.cell_lst).size.x_ - cur_net.offs_lst.first);
 
         if(cur_net.external_pins){
-            cost += (std::max(cur_net.ext_pos_max, max_pin_pos) - std::min(cur_net.ext_pos_min, min_pin_pos));
+            cost += (std::max(cur_net.ext_pos_max, lst_pin_offs) - std::min(cur_net.ext_pos_min, fst_pin_offs));
         }
         else{
-            cost += (max_pin_pos - min_pin_pos);
+            cost += (lst_pin_offs - fst_pin_offs);
         }
     }
     return cost;
@@ -608,20 +596,21 @@ void swaps_global(netlist const & circuit, detailed_placement & pl, index_t row_
 
             index_t first_oc = pl.get_first_cell_on_row(other_row); // The first candidate cell to be examined
             for(index_t c = pl.get_first_cell_on_row(main_row); c != null_ind; c = pl.get_next_cell_on_row(c, main_row)){
-                assert(pl.cells_[c].row == main_row);
+                assert(pl.cell_rows_[c] == main_row);
                 if( (circuit.get_cell(c).attributes & XMovable) == 0) continue; // Don't touch fixed cells
 
                 // Number of cells after/before the end of the cell
                 index_t nb_after  = 0;
                 index_t nb_before = 0;
-                int_t pos_low = pl.cells_[c].position.x_ - pl.cells_[c].width, pos_hgh = pl.cells_[c].position.x_ + 2*pl.cells_[c].width;
+                int_t pos_low = pl.plt_.positions_[c].x_ -   circuit.get_cell(c).size.x_,
+                      pos_hgh = pl.plt_.positions_[c].x_ + 2*circuit.get_cell(c).size.x_;
                 for(index_t oc=first_oc; oc != null_ind and nb_after <= row_extent; oc = pl.get_next_cell_on_row(oc, other_row)){
-                    assert(pl.cells_[oc].row == other_row);
+                    assert(pl.cell_rows_[oc] == other_row);
                     if( (circuit.get_cell(oc).attributes & XMovable) == 0) continue; // Don't touche fixed cells
 
                     // Count the cells which should trigger stop or shouldn't be used at the next iteration
-                    if(pl.cells_[oc].position.x_ >= pos_hgh) ++nb_after;
-                    if(pl.cells_[oc].position.x_ + pl.cells_[oc].width <= pos_low) ++ nb_before;
+                    if(pl.plt_.positions_[oc].x_ >= pos_hgh) ++nb_after;
+                    if(pl.plt_.positions_[oc].x_ + circuit.get_cell(oc).size.x_ <= pos_low) ++ nb_before;
 
                     if(try_swap(circuit, pl, c, oc)){
                         std::swap(c, oc);
@@ -654,14 +643,14 @@ void OSRP_convex(netlist const & circuit, detailed_placement & pl){
 
             if(not cells.empty()){
                 // Limits of the placement region for the cells taken
-                int_t lower_lim = pl.get_limit_positions(cells.front()).first,
-                      upper_lim = pl.get_limit_positions(cells.back()).second;
+                int_t lower_lim = pl.get_limit_positions(circuit, cells.front()).first,
+                      upper_lim = pl.get_limit_positions(circuit, cells.back()).second;
                 std::vector<int_t> final_positions;
                 optimize_convex_sequence(circuit, pl, cells, final_positions, lower_lim, upper_lim);
 
                 // Update the positions
                 for(index_t i=0; i<cells.size(); ++i){
-                    pl.cells_[cells[i]].position.x_ = final_positions[i];
+                    pl.plt_.positions_[cells[i]].x_ = final_positions[i];
                 }
             }
 
@@ -692,8 +681,8 @@ void swaps_row(netlist const & circuit, detailed_placement & pl, index_t range){
 
             if(not cells.empty()){
                 // Limits of the placement region for the cells taken
-                int_t lower_lim = pl.get_limit_positions(cells.front()).first,
-                      upper_lim = pl.get_limit_positions(cells.back()).second;
+                int_t lower_lim = pl.get_limit_positions(circuit, cells.front()).first,
+                      upper_lim = pl.get_limit_positions(circuit, cells.back()).second;
 
                 std::int64_t best_cost = std::numeric_limits<std::int64_t>::max();
                 std::vector<int_t> positions(cells.size());
@@ -716,7 +705,7 @@ void swaps_row(netlist const & circuit, detailed_placement & pl, index_t range){
                 cells = best_permutation;
                 // Update the positions and the topology
                 for(index_t i=0; i<cells.size(); ++i){
-                    pl.cells_[cells[i]].position.x_ = best_positions[i];
+                    pl.plt_.positions_[cells[i]].x_ = best_positions[i];
                 }
 
                 pl.reorder_standard_cells(old_permutation, cells);
@@ -741,7 +730,7 @@ void swaps_row(netlist const & circuit, detailed_placement & pl, index_t range){
 void row_compatible_orientation(netlist const & circuit, detailed_placement & pl, bool first_row_orient){
     for(index_t c=0; c<circuit.cell_cnt(); ++c){
         if( (circuit.get_cell(c).attributes & YFlippable) != 0 and pl.cell_height(c) == 1){
-            pl.cells_[c].y_orientation = (pl.cells_[c].row % 2 != 0) ^ first_row_orient;
+            pl.plt_.orientations_[c].y_ = (pl.cell_rows_[c] % 2 != 0) ^ first_row_orient;
         }
     }
 }
