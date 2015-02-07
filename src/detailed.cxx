@@ -1,5 +1,7 @@
 
 #include "coloquinte/detailed.hxx"
+#include "coloquinte/topologies.hxx"
+#include "coloquinte/circuit_helper.hxx"
 #include "coloquinte/optimization_subproblems.hxx"
 
 #include <lemon/smart_graph.h>
@@ -341,27 +343,17 @@ void optimize_on_topology(netlist const & circuit, detailed_placement & pl){
 namespace{
 
 inline std::int64_t get_nets_cost(netlist const & circuit, detailed_placement const & pl, std::vector<index_t> const & involved_nets){
-    std::int64_t cost = 0.0;
+    std::int64_t sum = 0;
 
     for(index_t n : involved_nets){
-        if(circuit.get_net(n).pin_cnt == 0) continue;
-        auto mins = point<int_t>(std::numeric_limits<int_t>::max(), std::numeric_limits<int_t>::min());
-        auto maxs = point<int_t>(std::numeric_limits<int_t>::min(), std::numeric_limits<int_t>::max());
-        for(netlist::pin_t p : circuit.get_net(n)){
-            auto offs = point<int_t>(
-                pl.plt_.orientations_[p.cell_ind].x_ ? p.offset.x_ : circuit.get_cell(p.cell_ind).size.x_-p.offset.x_,
-                pl.plt_.orientations_[p.cell_ind].y_ ? p.offset.y_ : circuit.get_cell(p.cell_ind).size.y_-p.offset.y_
-            );
-            point<int_t> pos = offs + pl.plt_.positions_[p.cell_ind];
-            mins.x_ = std::min(mins.x_, pos.x_);
-            mins.y_ = std::min(mins.y_, pos.y_);
-            maxs.x_ = std::max(maxs.x_, pos.x_);
-            maxs.y_ = std::max(maxs.y_, pos.y_);
-        }
-        cost += (maxs.x_ - mins.x_) + (maxs.y_ - mins.y_);
+        if(circuit.get_net(n).pin_cnt <= 1) continue;
+
+        auto pins = get_pins_1D(circuit, pl.plt_, n);
+        auto minmaxX = std::minmax_element(pins.x_.begin(), pins.x_.end()), minmaxY = std::minmax_element(pins.y_.begin(), pins.y_.end());
+        sum += ((minmaxX.second->pos - minmaxX.first->pos) + (minmaxY.second->pos - minmaxY.first->pos));
     }
 
-    return cost;
+    return sum;
 }
 
 // Tries to swap two cells; 
@@ -398,16 +390,14 @@ bool try_swap(netlist const & circuit, detailed_placement & pl, index_t c1, inde
         std::int64_t old_cost = get_nets_cost(circuit, pl, involved_nets);
 
         // Save the old values
-        int_t c1_x = pl.plt_.positions_[c1].x_;
-        int_t c2_x = pl.plt_.positions_[c2].x_;
-        int_t c1_y = pl.plt_.positions_[c1].y_;
-        int_t c2_y = pl.plt_.positions_[c2].y_;
+        point<int_t> p1 = pl.plt_.positions_[c1];
+        point<int_t> p2 = pl.plt_.positions_[c2];
 
         // Warning: won't work if the two cells don't have the same height
         pl.plt_.positions_[c1].x_ = (swp_min_c1 + swp_max_c1) / 2;
         pl.plt_.positions_[c2].x_ = (swp_min_c2 + swp_max_c2) / 2;
-        pl.plt_.positions_[c1].y_ = c2_y;
-        pl.plt_.positions_[c2].y_ = c1_y;
+        pl.plt_.positions_[c1].y_ = p2.y_;
+        pl.plt_.positions_[c2].y_ = p1.y_;
 
         std::int64_t swp_cost = get_nets_cost(circuit, pl, involved_nets);
 
@@ -419,10 +409,8 @@ bool try_swap(netlist const & circuit, detailed_placement & pl, index_t c1, inde
         }
         else{
             // Reset the old values
-            pl.plt_.positions_[c1].x_ = c1_x;
-            pl.plt_.positions_[c2].x_ = c2_x;
-            pl.plt_.positions_[c1].y_ = c1_y;
-            pl.plt_.positions_[c2].y_ = c2_y;
+            pl.plt_.positions_[c1] = p1;
+            pl.plt_.positions_[c2] = p2;
 
             // We didn't swap
             return false;
@@ -541,13 +529,15 @@ inline std::int64_t optimize_convex_sequence(netlist const & circuit, detailed_p
     std::vector<int_t> right_slopes(cells.size(), 0);
     for(auto const cur_net : net_props){
         if(cur_net.external_pins){
-            int_t fst_pin_offs = (pl.plt_.orientations_[cur_net.cell_fst].x_ ?
-                cur_net.offs_fst.first : circuit.get_cell(cur_net.cell_fst).size.x_ - cur_net.offs_fst.second);
-            int_t lst_pin_offs = (pl.plt_.orientations_[cur_net.cell_lst].x_ ?
-                cur_net.offs_lst.second : circuit.get_cell(cur_net.cell_lst).size.x_ - cur_net.offs_lst.first);
+            index_t fst_c = cells[cur_net.cell_fst],
+                    lst_c = cells[cur_net.cell_lst];
+            int_t fst_pin_offs = (pl.plt_.orientations_[fst_c].x_ ?
+                cur_net.offs_fst.first : circuit.get_cell(fst_c).size.x_ - cur_net.offs_fst.second);
+            int_t lst_pin_offs = (pl.plt_.orientations_[lst_c].x_ ?
+                cur_net.offs_lst.second : circuit.get_cell(lst_c).size.x_ - cur_net.offs_lst.first);
 
-            bounds.push_back(cell_bound(cur_net.cell_fst, static_cast<int_t>(std::round(cur_net.ext_pos_min - fst_pin_offs) ), cur_net.weight));
-            bounds.push_back(cell_bound(cur_net.cell_lst, static_cast<int_t>(std::round(cur_net.ext_pos_max - lst_pin_offs) ), cur_net.weight));
+            bounds.push_back(cell_bound(cur_net.cell_fst, cur_net.ext_pos_min - fst_pin_offs, cur_net.weight));
+            bounds.push_back(cell_bound(cur_net.cell_lst, cur_net.ext_pos_max - lst_pin_offs, cur_net.weight));
 
             right_slopes[cur_net.cell_lst] += cur_net.weight;
         }
@@ -573,13 +563,15 @@ inline std::int64_t optimize_convex_sequence(netlist const & circuit, detailed_p
 
     std::int64_t cost = 0;
     for(auto const cur_net : net_props){
-        int_t fst_pin_offs = (pl.plt_.orientations_[cur_net.cell_fst].x_ ?
-            cur_net.offs_fst.first : circuit.get_cell(cur_net.cell_fst).size.x_ - cur_net.offs_fst.second);
-        int_t lst_pin_offs = (pl.plt_.orientations_[cur_net.cell_lst].x_ ?
-            cur_net.offs_lst.second : circuit.get_cell(cur_net.cell_lst).size.x_ - cur_net.offs_lst.first);
+        index_t fst_c = cells[cur_net.cell_fst],
+                lst_c = cells[cur_net.cell_lst];
+        int_t fst_pin_offs = (pl.plt_.orientations_[fst_c].x_ ?
+            cur_net.offs_fst.first : circuit.get_cell(fst_c).size.x_ - cur_net.offs_fst.second);
+        int_t lst_pin_offs = (pl.plt_.orientations_[lst_c].x_ ?
+            cur_net.offs_lst.second : circuit.get_cell(lst_c).size.x_ - cur_net.offs_lst.first);
 
         if(cur_net.external_pins){
-            cost += (std::max(cur_net.ext_pos_max, lst_pin_offs) - std::min(cur_net.ext_pos_min, fst_pin_offs));
+            cost += (std::max(cur_net.ext_pos_max, positions[cur_net.cell_lst] + lst_pin_offs) - std::min(cur_net.ext_pos_min, positions[cur_net.cell_fst] + fst_pin_offs));
         }
         else{
             cost += (lst_pin_offs - fst_pin_offs);

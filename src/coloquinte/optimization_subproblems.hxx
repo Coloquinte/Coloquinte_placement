@@ -96,7 +96,7 @@ class full_single_row{
     // Get the result
     std::vector<int_t> get_placement();
 
-    full_single_row() : cur_slope(0.0), lower(std::numeric_limits<int_t>::min()), upper(std::numeric_limits<int_t>::max()), prev_width(1, 0) {}
+    full_single_row() : cur_slope(0), lower(std::numeric_limits<int_t>::min()), upper(std::numeric_limits<int_t>::max()), prev_width(1, 0) {}
 };
 
 template<typename T>

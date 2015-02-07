@@ -6,7 +6,6 @@
 #include "circuit.hxx"
 
 namespace coloquinte{
-namespace gp{
 
 struct pin_1D{
     index_t cell_ind;
@@ -77,7 +76,6 @@ inline point<std::vector<pin_1D> > get_pins_1D(netlist const & circuit, placemen
     return ret;
 }
 
-} // namespace gp
 } // namespace coloquinte
 
 #endif
