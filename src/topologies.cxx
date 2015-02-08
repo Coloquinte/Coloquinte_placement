@@ -1,5 +1,6 @@
 
 #include "coloquinte/topologies.hxx"
+#include "coloquinte/circuit_helper.hxx"
 
 #include <array>
 #include <algorithm>

@@ -1,5 +1,6 @@
+
 #include "coloquinte/circuit_helper.hxx"
-#include "coloquinte/topologies.hxx"
+#include "coloquinte/circuit.hxx"
 
 namespace coloquinte{
 

@@ -6,11 +6,6 @@
 
 namespace coloquinte{
 
-std::int64_t MST_length(std::vector<point<int_t> > const & pins);
-std::int64_t RSMT_length(std::vector<point<int_t> > const & pins, index_t exactitude_limit);
-std::vector<std::pair<index_t, index_t> > get_MST_topology(std::vector<point<int_t> > const & pins);
-point<std::vector<std::pair<index_t, index_t> > > get_RSMT_topology(std::vector<point<int_t> > const & pins, index_t exactitude_limit);
-
 template<int pin_cnt>
 struct Hconnectivity{
     // The edges and the couple of pins connected to the extreme ones are represented by one char each

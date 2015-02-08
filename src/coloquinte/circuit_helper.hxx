@@ -3,7 +3,7 @@
 #define COLOQUINTE_GP_HELPERCIRCUIT
 
 #include "common.hxx"
-#include "circuit.hxx"
+#include "netlist.hxx"
 
 namespace coloquinte{
 
@@ -76,8 +76,13 @@ inline point<std::vector<pin_1D> > get_pins_1D(netlist const & circuit, placemen
     return ret;
 }
 
+std::int64_t MST_length(std::vector<point<int_t> > const & pins);
+std::int64_t RSMT_length(std::vector<point<int_t> > const & pins, index_t exactitude_limit);
 std::int64_t get_HPWL_length(netlist const & circuit, placement_t const & pl, index_t net_ind);
 std::int64_t get_RSMT_length(netlist const & circuit, placement_t const & pl, index_t net_ind);
+
+std::vector<std::pair<index_t, index_t> > get_MST_topology(std::vector<point<int_t> > const & pins);
+point<std::vector<std::pair<index_t, index_t> > > get_RSMT_topology(std::vector<point<int_t> > const & pins, index_t exactitude_limit);
 
 } // namespace coloquinte
 

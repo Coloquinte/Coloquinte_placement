@@ -1,6 +1,5 @@
 
 #include "coloquinte/detailed.hxx"
-#include "coloquinte/topologies.hxx"
 #include "coloquinte/circuit_helper.hxx"
 #include "coloquinte/optimization_subproblems.hxx"
 
