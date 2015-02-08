@@ -59,11 +59,14 @@ struct detailed_placement{
     void reorder_standard_cells(std::vector<index_t> const old_order, std::vector<index_t> const new_order);
 };
 
-void swaps_global(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent);
-void swaps_row(netlist const & circuit, detailed_placement & pl, index_t range);
-void OSRP_convex(netlist const & circuit, detailed_placement & pl);
-void OSRP_nonconvex(netlist const & circuit, detailed_placement & pl);
-void optimize_on_topology(netlist const & circuit, detailed_placement & pl);
+void swaps_global_HPWL(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent);
+void swaps_global_RSMT(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent);
+
+void swaps_row_HPWL(netlist const & circuit, detailed_placement & pl, index_t range);
+
+void OSRP_convex_HPWL(netlist const & circuit, detailed_placement & pl);
+
+void optimize_on_topology_HPWL(netlist const & circuit, detailed_placement & pl);
 
 void row_compatible_orientation(netlist const & circuit, detailed_placement & pl, bool first_row_orient);
 

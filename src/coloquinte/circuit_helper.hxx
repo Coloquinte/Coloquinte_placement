@@ -76,6 +76,9 @@ inline point<std::vector<pin_1D> > get_pins_1D(netlist const & circuit, placemen
     return ret;
 }
 
+std::int64_t get_HPWL_length(netlist const & circuit, placement_t const & pl, index_t net_ind);
+std::int64_t get_RSMT_length(netlist const & circuit, placement_t const & pl, index_t net_ind);
+
 } // namespace coloquinte
 
 #endif

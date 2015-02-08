@@ -27,6 +27,24 @@ void netlist::selfcheck() const{
 void placement_t::selfcheck() const{
 }
 
+std::int64_t get_HPWL_length(netlist const & circuit, placement_t const & pl, index_t net_ind){
+    if(circuit.get_net(net_ind).pin_cnt <= 1) return 0;
+
+    auto pins = get_pins_1D(circuit, pl, net_ind);
+    auto minmaxX = std::minmax_element(pins.x_.begin(), pins.x_.end()), minmaxY = std::minmax_element(pins.y_.begin(), pins.y_.end());
+    return ((minmaxX.second->pos - minmaxX.first->pos) + (minmaxY.second->pos - minmaxY.first->pos));
+}
+
+std::int64_t get_RSMT_length(netlist const & circuit, placement_t const & pl, index_t net_ind){
+    if(circuit.get_net(net_ind).pin_cnt <= 1) return 0;
+    auto pins = get_pins_2D(circuit, pl, net_ind);
+    std::vector<point<int_t> > points;
+    for(pin_2D const p : pins){
+        points.push_back(p.pos);
+    }
+    return RSMT_length(points, 8);
+}
+
 namespace gp{
 
 void add_force(pin_1D const p1, pin_1D const p2, linear_system & L, float_t force){
@@ -252,11 +270,7 @@ point<linear_system> get_RSMT_linear_system(netlist const & circuit, placement_t
 std::int64_t get_HPWL_wirelength(netlist const & circuit, placement_t const & pl){
     std::int64_t sum = 0;
     for(index_t i=0; i<circuit.net_cnt(); ++i){
-        if(circuit.get_net(i).pin_cnt <= 1) continue;
-
-        auto pins = get_pins_1D(circuit, pl, i);
-        auto minmaxX = std::minmax_element(pins.x_.begin(), pins.x_.end()), minmaxY = std::minmax_element(pins.y_.begin(), pins.y_.end());
-        sum += ((minmaxX.second->pos - minmaxX.first->pos) + (minmaxY.second->pos - minmaxY.first->pos));
+        sum += get_HPWL_length(circuit, pl, i);
     }
     return sum;
 }
@@ -278,12 +292,7 @@ std::int64_t get_MST_wirelength(netlist const & circuit, placement_t const & pl)
 std::int64_t get_RSMT_wirelength(netlist const & circuit, placement_t const & pl){
     std::int64_t sum = 0;
     for(index_t i=0; i<circuit.net_cnt(); ++i){
-        auto pins = get_pins_2D(circuit, pl, i);
-        std::vector<point<int_t> > points;
-        for(pin_2D const p : pins){
-            points.push_back(p.pos);
-        }
-        sum += RSMT_length(points, 8);
+        sum += get_RSMT_length(circuit, pl, i);
     }
     return sum;
 }

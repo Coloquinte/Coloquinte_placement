@@ -212,7 +212,7 @@ void detailed_placement::reorder_standard_cells(std::vector<index_t> const old_o
     else row_last_cells_[r] = new_order.back(); 
 }
 
-void optimize_on_topology(netlist const & circuit, detailed_placement & pl){
+void optimize_on_topology_HPWL(netlist const & circuit, detailed_placement & pl){
     // Solves a minimum cost flow problem to optimize the placement at fixed topology
     // Concretely, it means aligning the pins to minimize the wirelength
     // It uses the Lemon network simplex solver from the Coin-OR initiative, which should scale well up to hundred of thousands of cells
@@ -342,22 +342,9 @@ void optimize_on_topology(netlist const & circuit, detailed_placement & pl){
 
 namespace{
 
-inline std::int64_t get_nets_cost(netlist const & circuit, detailed_placement const & pl, std::vector<index_t> const & involved_nets){
-    std::int64_t sum = 0;
-
-    for(index_t n : involved_nets){
-        if(circuit.get_net(n).pin_cnt <= 1) continue;
-
-        auto pins = get_pins_1D(circuit, pl.plt_, n);
-        auto minmaxX = std::minmax_element(pins.x_.begin(), pins.x_.end()), minmaxY = std::minmax_element(pins.y_.begin(), pins.y_.end());
-        sum += ((minmaxX.second->pos - minmaxX.first->pos) + (minmaxY.second->pos - minmaxY.first->pos));
-    }
-
-    return sum;
-}
-
 // Tries to swap two cells; 
-bool try_swap(netlist const & circuit, detailed_placement & pl, index_t c1, index_t c2){
+inline bool try_swap(netlist const & circuit, detailed_placement & pl, index_t c1, index_t c2,
+std::function<std::int64_t(netlist const &, detailed_placement const &, std::vector<index_t> const &)> get_nets_cost){
     assert(pl.cell_height(c1) == 1 and pl.cell_height(c2) == 1);
     assert(circuit.get_cell(c1).size.y_ == circuit.get_cell(c2).size.y_); // Same (standard cell) height
     assert( (circuit.get_cell(c1).attributes & XMovable) != 0 and (circuit.get_cell(c1).attributes & YMovable) != 0);
@@ -579,9 +566,9 @@ inline std::int64_t optimize_convex_sequence(netlist const & circuit, detailed_p
     }
     return cost;
 }
-} // End anonymous namespace
 
-void swaps_global(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent){
+inline void generic_swaps_global(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent,
+std::function<std::int64_t(netlist const &, detailed_placement const &, std::vector<index_t> const &)> get_nets_cost){
     for(index_t main_row = 0; main_row < pl.row_cnt(); ++main_row){
 
         for(index_t other_row = main_row+1; other_row <= std::min(pl.row_cnt()-1, main_row+row_extent) ; ++other_row){
@@ -604,7 +591,7 @@ void swaps_global(netlist const & circuit, detailed_placement & pl, index_t row_
                     if(pl.plt_.positions_[oc].x_ >= pos_hgh) ++nb_after;
                     if(pl.plt_.positions_[oc].x_ + circuit.get_cell(oc).size.x_ <= pos_low) ++ nb_before;
 
-                    if(try_swap(circuit, pl, c, oc)){
+                    if(try_swap(circuit, pl, c, oc, get_nets_cost)){
                         std::swap(c, oc);
                         if(c == first_oc) first_oc = oc;
                     }
@@ -618,8 +605,33 @@ void swaps_global(netlist const & circuit, detailed_placement & pl, index_t row_
     }
     pl.selfcheck();
 }
+} // End anonymous namespace
 
-void OSRP_convex(netlist const & circuit, detailed_placement & pl){
+void swaps_global_HPWL(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent){
+    generic_swaps_global(circuit, pl, row_extent, cell_extent,
+        [](netlist const & circuit, detailed_placement const & pl, std::vector<index_t> const & involved_nets) -> std::int64_t{
+        std::int64_t sum = 0;
+        for(index_t n : involved_nets){
+            if(circuit.get_net(n).pin_cnt <= 1) continue;
+            sum += get_HPWL_length(circuit, pl.plt_, n);
+        }
+        return sum;
+    });
+}
+
+void swaps_global_RSMT(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent){
+    generic_swaps_global(circuit, pl, row_extent, cell_extent,
+        [](netlist const & circuit, detailed_placement const & pl, std::vector<index_t> const & involved_nets) -> std::int64_t{
+        std::int64_t sum = 0;
+        for(index_t n : involved_nets){
+            if(circuit.get_net(n).pin_cnt <= 1) continue;
+            sum += get_RSMT_length(circuit, pl.plt_, n);
+        }
+        return sum;
+    });
+}
+
+void OSRP_convex_HPWL(netlist const & circuit, detailed_placement & pl){
     for(index_t r=0; r<pl.row_cnt(); ++r){
         index_t OSRP_cell = pl.get_first_cell_on_row(r);
 
@@ -653,7 +665,7 @@ void OSRP_convex(netlist const & circuit, detailed_placement & pl){
     pl.selfcheck();
 }
 
-void swaps_row(netlist const & circuit, detailed_placement & pl, index_t range){
+void swaps_row_HPWL(netlist const & circuit, detailed_placement & pl, index_t range){
     assert(range >= 2);
 
     for(index_t r=0; r<pl.row_cnt(); ++r){
