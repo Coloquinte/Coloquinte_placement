@@ -8,7 +8,7 @@ namespace dp{
 namespace{
 
 // Tries to swap two cells; 
-inline bool try_swap(netlist const & circuit, detailed_placement & pl, index_t c1, index_t c2,
+inline bool try_swap(netlist const & circuit, detailed_placement & pl, index_t c1, index_t c2, bool try_flip,
 std::function<std::int64_t(netlist const &, detailed_placement const &, std::vector<index_t> const &)> get_nets_cost){
     assert(pl.cell_height(c1) == 1 and pl.cell_height(c2) == 1);
     assert(circuit.get_cell(c1).size.y_ == circuit.get_cell(c2).size.y_); // Same (standard cell) height
@@ -51,20 +51,44 @@ std::function<std::int64_t(netlist const &, detailed_placement const &, std::vec
         pl.plt_.positions_[c1].y_ = p2.y_;
         pl.plt_.positions_[c2].y_ = p1.y_;
 
-        std::int64_t swp_cost = get_nets_cost(circuit, pl, involved_nets);
+        if(try_flip){
+            point<bool> o1 = pl.plt_.orientations_[c1];
+            point<bool> o2 = pl.plt_.orientations_[c2];
+            index_t bst_ind = 4;
+            for(index_t i=0; i<4; ++i){
+                pl.plt_.orientations_[c1].x_ = i % 2;
+                pl.plt_.orientations_[c2].x_ = i / 2;
+                std::int64_t new_cost  = get_nets_cost(circuit, pl, involved_nets);
+                if(new_cost < old_cost){
+                    old_cost = new_cost;
+                    bst_ind = i;
+                }
+            }
 
-        if(swp_cost < old_cost){
+            // One of the orientations with the new positions was better
+            if(bst_ind < 4){
+                pl.swap_topologies(c1, c2);
+                pl.plt_.orientations_[c1].x_ = bst_ind % 2;
+                pl.plt_.orientations_[c2].x_ = bst_ind / 2;
+                // We kept the swap
+                return true;
+            }
+            else{
+                pl.plt_.positions_[c1] = p1;
+                pl.plt_.positions_[c2] = p2;
+                pl.plt_.orientations_[c1] = o1;
+                pl.plt_.orientations_[c2] = o2;
+                return false;
+            }
+        }
+        else if(get_nets_cost(circuit, pl, involved_nets) < old_cost){
             pl.swap_topologies(c1, c2);
-
-            // We kept the swap
             return true;
         }
         else{
-            // Reset the old values
+            // Reset the old values since we didn't swap anything
             pl.plt_.positions_[c1] = p1;
             pl.plt_.positions_[c2] = p2;
-
-            // We didn't swap
             return false;
         }
 
@@ -81,7 +105,7 @@ std::function<std::int64_t(netlist const &, detailed_placement const &, std::vec
     }
 }
 
-inline void generic_swaps_global(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent,
+inline void generic_swaps_global(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent, bool try_flip,
 std::function<std::int64_t(netlist const &, detailed_placement const &, std::vector<index_t> const &)> get_nets_cost){
     for(index_t main_row = 0; main_row < pl.row_cnt(); ++main_row){
 
@@ -105,7 +129,7 @@ std::function<std::int64_t(netlist const &, detailed_placement const &, std::vec
                     if(pl.plt_.positions_[oc].x_ >= pos_hgh) ++nb_after;
                     if(pl.plt_.positions_[oc].x_ + circuit.get_cell(oc).size.x_ <= pos_low) ++ nb_before;
 
-                    if(try_swap(circuit, pl, c, oc, get_nets_cost)){
+                    if(try_swap(circuit, pl, c, oc, try_flip, get_nets_cost)){
                         std::swap(c, oc);
                         if(c == first_oc) first_oc = oc;
                     }
@@ -122,8 +146,8 @@ std::function<std::int64_t(netlist const &, detailed_placement const &, std::vec
 
 } // End anonymous namespace
 
-void swaps_global_HPWL(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent){
-    generic_swaps_global(circuit, pl, row_extent, cell_extent,
+void swaps_global_HPWL(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent, bool try_flip){
+    generic_swaps_global(circuit, pl, row_extent, cell_extent, try_flip,
         [](netlist const & circuit, detailed_placement const & pl, std::vector<index_t> const & involved_nets) -> std::int64_t{
         std::int64_t sum = 0;
         for(index_t n : involved_nets){
@@ -134,8 +158,8 @@ void swaps_global_HPWL(netlist const & circuit, detailed_placement & pl, index_t
     });
 }
 
-void swaps_global_RSMT(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent){
-    generic_swaps_global(circuit, pl, row_extent, cell_extent,
+void swaps_global_RSMT(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent, bool try_flip){
+    generic_swaps_global(circuit, pl, row_extent, cell_extent, try_flip,
         [](netlist const & circuit, detailed_placement const & pl, std::vector<index_t> const & involved_nets) -> std::int64_t{
         std::int64_t sum = 0;
         for(index_t n : involved_nets){
