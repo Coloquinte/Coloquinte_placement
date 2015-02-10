@@ -17,6 +17,9 @@ set ( cpps              circuit.cxx
                         optimization_subproblems.cxx
                         orientation.cxx
                         detailed.cxx
+                        cell_swapping.cxx
+                        MCF_opt.cxx
+                        row_opt.cxx
                         topologies.cxx
                         lookup_table.cxx
                         legalizer.cxx
