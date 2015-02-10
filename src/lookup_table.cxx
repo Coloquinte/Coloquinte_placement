@@ -4,6 +4,9 @@
 namespace coloquinte{
 namespace steiner_lookup{
 
+// This content was automatically generated
+// They represent a set of trees on n nodes whose horizontal connectivity yield the optimal Steiner trees
+
 std::array<Hconnectivity<4>, 2> const topologies_4{{
 	{{16},16},
 	{{1},0}
