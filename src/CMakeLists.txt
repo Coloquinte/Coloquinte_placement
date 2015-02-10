@@ -31,4 +31,4 @@ add_executable ( coloquinte.bin    ${coloquintecpps})
 target_link_libraries ( coloquinte.bin    coloquinte )
 
 install( TARGETS coloquinte  DESTINATION lib${LIB_SUFFIX} )
-install( FILES ${includes}   DESTINATION include/Coloquinte ) 
+install( FILES ${includes}   DESTINATION include/coloquinte ) 
