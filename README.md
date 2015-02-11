@@ -2,10 +2,10 @@
 
 Coloquinte is a framework for placing VLSI circuit. It targets standard-cell digital circuits, optionally with pre-placed macroblocks.
 
-It is a complete tool, handling all steps of a placement flow. It features exact and approximate wirelength models, and should be updated to do timing- and routing-driven optimization.
+It is now a complete tool, handling all steps of a placement flow. It features exact and approximate wirelength models, and should be updated to do timing- and routing-driven optimization.
 
-It is not standalone: no parsers; currently, it interfaces with the Coriolis CAD toolchain.
-It is still a work in progress, and the optimization process could be significantly improved in the coming months. However, all tools are already competitive with other academic placers - and it is the only open source placer available.
+It is not standalone: no parsers; currently, it interfaces with the Coriolis CAD toolchain, but you you can follow the example main and interface it with your own tool.
+It is still a work in progress, and the optimization process could be significantly improved in the coming months. However, all tools are already competitive with other academic placers - and it is the only open source placer using analytical placement techniques.
 
 ## Principle
 
