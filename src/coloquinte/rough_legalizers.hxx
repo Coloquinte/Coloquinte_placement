@@ -3,6 +3,7 @@
 #define COLOQUINTE_GP_ROUGH_LEGALIZER
 
 #include "common.hxx"
+#include "netlist.hxx"
 
 #include <vector>
 #include <cassert>
@@ -10,8 +11,9 @@
 #include <functional>
 
 /*
- * A simple class to perform rough legalization with extreme efficiency
- *
+ * A simple class to perform approximate legalization with extreme efficiency
+ * 
+ * To be called during global placement or before an exact legalization
  *
  */
 
@@ -20,22 +22,10 @@ namespace gp{
 
 class region_distribution{
     /*
-     * Coordinates are mostly float but obstacles and areas are transformed to integers at construction for correctness
+     * Coordinates are mostly float but obstacles and areas are integers for correctness
      */
-    
-    public:
 
-    struct fixed_cell{
-        box<int_t> box_;
-        fixed_cell();
-        fixed_cell(point<int_t> size, point<float_t> position);
-        fixed_cell(box<int_t> bx);
-        /*
-         * Later extension to handle whitespace with capacities different than area
-         */
-        // uint64_t capacity;
-    };
-    
+    public:
     struct movable_cell{
         capacity_t demand_; // == area; No FP!!!
         point<float_t> pos_;  // Target position, determining the cost to allocate it
@@ -44,6 +34,13 @@ class region_distribution{
 
         movable_cell();
         movable_cell(capacity_t demand, point<float_t> p, index_t ind);
+    };
+
+    // Specifies a maximum density of movable cells per usable area
+    // Representing either a macroblock or a routing congestion
+    struct density_limit{
+        box<int_t> box_;
+        float_t density_; // from 0.0 for a macro to 1.0 if it does nothing
     };
 
     private:
@@ -63,16 +60,14 @@ class region_distribution{
     struct region{
         public:
         // Data members
-        capacity_t capacity_; // ==area; No FP!!! 
+        capacity_t capacity_; // ==area; No floating point!!! 
         point<float_t> pos_;
     
-        box<int_t> surface_;
         std::vector<cell_ref> cell_references_;
-        std::vector<fixed_cell> obstacles_;
 
         // Constructors
         region(){} // Necessary if we want to resize vectors 
-        region(box<int_t> bx, std::vector<fixed_cell> obstacles, std::vector<cell_ref> cells);
+        region(capacity_t cap, point<float_t> pos, std::vector<cell_ref> cells);
 
         // Helper functions for bipartitioning
         private:
@@ -108,18 +103,28 @@ class region_distribution{
 
     private:
     // Members
-    //
     index_t x_regions_cnt_, y_regions_cnt_;
     
-    box<int_t> placement_area_;
-    std::vector<region> placement_regions_;
     std::vector<movable_cell> cell_list_;
+    std::vector<region> placement_regions_;
+
+    box<int_t> placement_area_;
+    std::vector<density_limit> density_map_;
+    const capacity_t full_density_mul; // Multiplicator giving the grain for fractional areas for the surface
+          capacity_t cell_density_mul; // ANd for the cells
+    float_t density_scaling_factor_;
     
     private:
     // Helper functions
     region & get_region(index_t x_coord, index_t y_coord);
+    region const & get_region(index_t x_coord, index_t y_coord) const;
+    box<int_t> get_box(index_t x, index_t y, index_t x_cnt, index_t y_cnt) const;
+
     static void sort_uniquify(std::vector<cell_ref> & cell_references);
     static void just_uniquify(std::vector<cell_ref> & cell_references);
+
+    // Prepare regions with the right positions and capacities; different levels of nesting are compatible
+    std::vector<region> prepare_regions(index_t x_cnt, index_t y_cnt) const;
 
     public:
     
@@ -127,10 +132,6 @@ class region_distribution{
     inline index_t y_regions_cnt() const;
     inline index_t regions_cnt()   const;
     
-    // Dimensions of the uniform cells superimposed on the placement region
-    inline float_t x_cell_dim() const;
-    inline float_t y_cell_dim() const;
-
     inline index_t cell_cnt() const;
     inline index_t fractional_cell_cnt() const;
     
@@ -159,15 +160,17 @@ class region_distribution{
     /*
      * Optimization functions
      */
-    
-    // Improve bipartitions between closest non-empty neighbours
+
+    // Bipartitioning: only two regions are considered at a time
     void redo_adjacent_bipartitions();
     void redo_diagonal_bipartitions();
     void redo_bipartitions();
 
+    // Line partitioning: optimal on coordinate axis with Manhattan distance (Euclidean distance could use it in any direction)
     void redo_line_partitions();
-    void redo_diag_partitions(index_t len);
 
+    // Multipartitioning: several regions considered, slow runtimes
+    void redo_diag_partitions(index_t len);
     void redo_multipartitions(index_t x_width, index_t y_width);
     void redo_multipartitions(index_t width){ redo_multipartitions(width, width); }
 
@@ -177,20 +180,25 @@ class region_distribution{
     // Try to remove duplicate fractional cells    
     void fractions_minimization();
 
-    /*
-     * Manipulate
-     */
-    
-     void selfcheck() const;
-     region_distribution(box<int_t> placement_area, std::vector<movable_cell> all_cells, std::vector<fixed_cell> all_obstacles = std::vector<fixed_cell>());
-};
+    // Verify
+    void selfcheck() const;
 
-inline region_distribution::fixed_cell::fixed_cell(){}
-inline region_distribution::fixed_cell::fixed_cell(point<int_t> size, point<float_t> position){
-    point<int_t> min = static_cast<point<int_t> >(position - static_cast<float_t>(0.5)*static_cast<point<float_t> >(size));
-    box_ = box<int_t>(min.x_, min.x_ + size.x_, min.y_, min.y_ + size.y_);
-}
-inline region_distribution::fixed_cell::fixed_cell(box<int_t> bx) : box_(bx){}
+    private:
+    region_distribution(box<int_t> placement_area, netlist const & circuit, placement_t const & pl, std::vector<density_limit> const & density_map, bool full_density);
+
+    public:
+    /*
+     * Obtain a region_distribution from a placement
+     *
+     *     Full density: the object tries to pack the cells as much as possible while still respecting the density limits
+     *     Uniform density: not only are the density limits respected, the allocated capacities are proportional to the allowed densities
+     *
+     */
+
+    static region_distribution full_density_distribution(box<int_t> placement_area, netlist const & circuit, placement_t const & pl, std::vector<density_limit> const & density_map = std::vector<density_limit>());
+    static region_distribution uniform_density_distribution(box<int_t> placement_area, netlist const & circuit, placement_t const & pl, std::vector<density_limit> const & density_map = std::vector<density_limit>());
+
+};
 
 inline region_distribution::movable_cell::movable_cell(){}
 inline region_distribution::movable_cell::movable_cell(capacity_t demand, point<float_t> p, index_t ind) : demand_(demand), pos_(p), index_in_placement_(ind){}
@@ -199,7 +207,9 @@ inline index_t region_distribution::x_regions_cnt() const { return x_regions_cnt
 inline index_t region_distribution::y_regions_cnt() const { return y_regions_cnt_; }
 inline index_t region_distribution::regions_cnt()   const { index_t ret = x_regions_cnt() * y_regions_cnt(); assert(placement_regions_.size() == ret); return ret; }
 inline region_distribution::region & region_distribution::get_region(index_t x_coord, index_t y_coord){
-    assert(x_coord < x_regions_cnt() && y_coord < y_regions_cnt());
+    return placement_regions_[y_coord * x_regions_cnt() + x_coord];
+}
+inline region_distribution::region const & region_distribution::get_region(index_t x_coord, index_t y_coord) const{
     return placement_regions_[y_coord * x_regions_cnt() + x_coord];
 }
 
@@ -225,10 +235,12 @@ inline capacity_t region_distribution::region::allocated_capacity() const{
 inline index_t region_distribution::region::cell_cnt() const{ return cell_references_.size(); }
 
 inline float_t region_distribution::region::distance(region_distribution::cell_ref const & C) const{
-    //return std::abs(pos_.x_ - C.pos_.x_) + std::abs(pos_.y_ - C.pos_.y_);
+    return std::abs(pos_.x_ - C.pos_.x_) + std::abs(pos_.y_ - C.pos_.y_);
+    /*
     float_t manhattan = std::max(static_cast<float_t>(0.0), std::max(C.pos_.x_ - surface_.x_max_, surface_.x_min_ - C.pos_.x_))
                       + std::max(static_cast<float_t>(0.0), std::max(C.pos_.y_ - surface_.y_max_, surface_.y_min_ - C.pos_.y_));
     return manhattan * (1.0 + manhattan * 0.0001);
+    */
 }
 
 

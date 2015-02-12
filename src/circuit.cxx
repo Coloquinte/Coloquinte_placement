@@ -382,23 +382,7 @@ point<linear_system> get_linear_pulling_forces (netlist const & circuit, placeme
 }
 
 region_distribution get_rough_legalizer(netlist const & circuit, placement_t const & pl, box<int_t> surface){
-    std::vector<region_distribution::movable_cell> movable_cells;
-    std::vector<region_distribution::fixed_cell>   fixed_cells;
-
-    for(index_t i=0; i<circuit.cell_cnt(); ++i){
-        auto C = circuit.get_cell(i);
-        auto pos = point<float_t>(pl.positions_[i]);
-        auto S = point<float_t>(C.size);
-
-        if((C.attributes & (XMovable|YMovable)) != 0){
-            movable_cells.push_back(region_distribution::movable_cell(C.area, pos + 0.5f * S, i));
-        }
-        else{
-            fixed_cells.push_back(region_distribution::fixed_cell(C.size, pos + 0.5f * S));
-        }
-    }
-
-    return region_distribution(surface, movable_cells, fixed_cells);
+    return region_distribution::full_density_distribution(surface, circuit, pl);
 }
 
 void get_rough_legalization(netlist const & circuit, placement_t & pl, region_distribution const & legalizer){

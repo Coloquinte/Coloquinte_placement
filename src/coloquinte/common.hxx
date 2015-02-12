@@ -82,6 +82,12 @@ struct box{
             std::min(y_max_, o.y_max_)
         );
     }
+    point<T> dimensions() const{
+        return point<T>(x_max_-x_min_, y_max_-y_min_);
+    }
+    bool empty() const{
+        return dimensions().x_ <= 0 or dimensions().y_ <= 0;
+    }
 
     template<typename S>
     operator box<S>() const{
