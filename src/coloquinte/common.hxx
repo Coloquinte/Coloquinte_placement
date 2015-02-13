@@ -67,7 +67,14 @@ struct box{
     T x_min_, x_max_, y_min_, y_max_;
     box(){}
     box(T x_mn, T x_mx, T y_mn, T y_mx) : x_min_(x_mn), x_max_(x_mx), y_min_(y_mn), y_max_(y_mx){}
+    box(point<T> mn, point<T> mx) : x_min_(mn.x_), x_max_(mx.x_), y_min_(mn.y_), y_max_(mx.y_){}
 
+    bool in(box<T> const o) const{
+        return x_max_   <= o.x_max_
+            && y_max_   <= o.y_max_
+            && x_min_   >= o.x_min_
+            && y_min_   >= o.y_min_;
+    }
     bool intersects(box<T> const o) const{
         return x_min_   < o.x_max_
             && y_min_   < o.y_max_

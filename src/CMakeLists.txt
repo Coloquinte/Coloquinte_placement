@@ -12,6 +12,7 @@ set ( includes          coloquinte/circuit.hxx
                         coloquinte/optimization_subproblems.hxx
     )	           
 set ( cpps              circuit.cxx
+                        checkers.cxx
                         rough_legalizers.cxx
                         solvers.cxx
                         optimization_subproblems.cxx

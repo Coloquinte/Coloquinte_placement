@@ -4,30 +4,6 @@
 
 namespace coloquinte{
 
-void netlist::selfcheck() const{
-    index_t cell_cnt = cell_areas_.size();
-    assert(cell_cnt+1 == cell_limits_.size());
-    assert(cell_cnt == cell_sizes_.size());
-    assert(cell_cnt == cell_attributes_.size());
-    assert(cell_cnt == cell_internal_mapping_.size());
-
-    index_t net_cnt = net_weights_.size();
-    assert(net_cnt+1 == net_limits_.size());
-    assert(net_cnt == net_internal_mapping_.size());
-
-    index_t pin_cnt = pin_offsets_.size();
-    assert(pin_cnt == cell_indexes_.size());
-    assert(pin_cnt == pin_indexes_.size());
-    assert(pin_cnt == net_indexes_.size());
-
-    for(auto const p : pin_offsets_){
-        assert(std::isfinite(p.x_) and std::isfinite(p.y_));
-    }
-}
-
-void placement_t::selfcheck() const{
-}
-
 std::int64_t get_HPWL_length(netlist const & circuit, placement_t const & pl, index_t net_ind){
     if(circuit.get_net(net_ind).pin_cnt <= 1) return 0;
 
