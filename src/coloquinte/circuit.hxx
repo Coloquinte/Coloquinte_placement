@@ -11,6 +11,9 @@
 #include <cassert>
 
 namespace coloquinte{
+
+void verify_placement_legality(netlist const & circuit, placement_t const & pl, box<int_t> surface);
+
 namespace gp{
 
 point<linear_system> empty_linear_systems(netlist const & circuit, placement_t const & pl);
@@ -45,6 +48,7 @@ void get_rough_legalization(netlist const & circuit, placement_t & pl, region_di
 // Cell orientation optimization
 void optimize_exact_orientations(netlist const & circuit, placement_t & pl);
 //void spread_orientations(netlist const & circuit, placement_t & pl);
+
 
 } // namespace gp
 } // namespace coloquinte

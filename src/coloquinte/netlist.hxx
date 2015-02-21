@@ -195,7 +195,7 @@ inline netlist::netlist(std::vector<temporary_cell> cells, std::vector<temporary
         cell_internal_mapping_[i] = i;
     }
 
-    std::sort(pins.begin(), pins.end(), [](temporary_pin const a, temporary_pin const b){ return a.net_ind < b.net_ind; });
+    std::sort(pins.begin(), pins.end(), [](extended_pin const a, extended_pin const b){ return a.net_ind < b.net_ind; });
     for(index_t n=0, p=0; n<nets.size(); ++n){
         net_weights_[n] = nets[n].weight;
 
@@ -209,7 +209,7 @@ inline netlist::netlist(std::vector<temporary_cell> cells, std::vector<temporary
     }
     net_limits_.back() = pins.size();
 
-    std::sort(pins.begin(), pins.end(), [](temporary_pin const a, temporary_pin const b){ return a.cell_ind < b.cell_ind; });
+    std::sort(pins.begin(), pins.end(), [](extended_pin const a, extended_pin const b){ return a.cell_ind < b.cell_ind; });
 
     for(index_t c=0, p=0; c<cells.size(); ++c){
         cell_areas_[c] = cells[c].area;

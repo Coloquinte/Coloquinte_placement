@@ -255,7 +255,7 @@ std::vector<std::pair<index_t, index_t> > get_MST_topology(std::vector<point<int
     	}
     	
     	~union_find(){
-    		delete connex_representants;
+    		delete[] connex_representants;
     	}
     
         bool is_connex(){
