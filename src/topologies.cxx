@@ -32,18 +32,9 @@ int_t get_wirelength(std::vector<point<int_t> > const & pins, std::array<Hconnec
 }
 
 template<int n, int array_size>
-std::vector<std::pair<index_t, index_t> > get_topology(std::vector<point<int_t> > const & pins, std::array<Hconnectivity<n>, array_size> const & lookups){
-    std::array<indexed_pt, n> ipoints;
-    for(index_t i=0; i<n; ++i){
-        ipoints[i] = indexed_pt(pins[i], i);
-    }
-
-    std::sort(ipoints.begin(), ipoints.end(), [](indexed_pt a , indexed_pt b){return a.x_ < b.x_; });
-
+std::vector<std::pair<index_t, index_t> > get_topology_from_sorted(std::vector<point<int_t> > const & pins, std::array<Hconnectivity<n>, array_size> const & lookups){
     std::array<point<int_t>, n> points;
-    for(index_t i=0; i<n; ++i){
-        points[i] = ipoints[i];
-    }
+    std::copy_n(pins.begin(), n, points.begin());
 
     // Find the horizontal topology with the smallest cost
     int_t cost = std::numeric_limits<int_t>::max();
@@ -55,15 +46,9 @@ std::vector<std::pair<index_t, index_t> > get_topology(std::vector<point<int_t> 
             ind = i;
         }
     }
-    assert(ind < std::numeric_limits<index_t>::max());
-    auto topo = lookups[ind].get_x_topology(points);
-
-    // Back to the original ordering
-    for(auto & E : topo){
-        E.first = ipoints[E.first].index;
-        E.second = ipoints[E.second].index;
-    }
-    return std::vector<std::pair<index_t, index_t> >(topo.begin(), topo.end());
+    assert(ind != std::numeric_limits<index_t>::max());
+    auto ret = lookups[ind].get_x_topology(points);
+    return std::vector<std::pair<index_t, index_t> >(ret.begin(), ret.end());
 }
 
 point<std::vector<std::pair<index_t, index_t> > > get_vertical_topology(std::vector<point<int_t> > pins, std::vector<std::pair<index_t, index_t> > const & Htopo){
@@ -88,7 +73,7 @@ point<std::vector<std::pair<index_t, index_t> > > get_vertical_topology(std::vec
     std::vector<index_t> nxt_y_pin(pins.size(), null_ind);
     std::vector<edge_t> ret;
     for(auto const E : Htopo){
-        // Assuming a correctly ordered horizontal topology
+        // Assuming a correctly ordered horizontal topology where the first node of the edge is never visited again
         index_t f=E.first, s=E.second;
         index_t first_yf=min_y_pin[f], first_ys=min_y_pin[s];
 
@@ -202,6 +187,39 @@ inline void southeast_octant_neighbours(std::vector<point<int_t> > pins, std::ve
     northeast_octant_neighbours(pins, edges);
 }
 
+// TODO: cut a spanning tree, create Steiner trees for the part, then merge them
+std::vector<std::pair<index_t, index_t> > get_small_horizontal_topology_from_sorted(std::vector<point<int_t> > const & pins){
+    assert(pins.size() <= 10);
+    typedef std::pair<index_t, index_t> edge_t;
+
+    switch(pins.size()){
+        case 2:
+            return std::vector<edge_t>(1, edge_t(0, 1));
+        case 3:
+            return std::vector<edge_t>{{0, 1}, {1, 2}};
+        case 4:
+            return get_topology_from_sorted<4, 2>(pins, steiner_lookup::topologies_4);
+        case 5:
+            return get_topology_from_sorted<5, 6>(pins, steiner_lookup::topologies_5);
+        case 6:
+            return get_topology_from_sorted<6, 23>(pins, steiner_lookup::topologies_6);
+        case 7:
+            return get_topology_from_sorted<7, 111>(pins, steiner_lookup::topologies_7);
+        case 8:
+            return get_topology_from_sorted<8, 642>(pins, steiner_lookup::topologies_8);
+        case 9:
+            return get_topology_from_sorted<9, 4334>(pins, steiner_lookup::topologies_9);
+        case 10:
+            return get_topology_from_sorted<10, 33510>(pins, steiner_lookup::topologies_10);
+        default: // Only 1 and 0 left (11 and more are protected by an assertion)
+            return std::vector<edge_t>();
+    }
+}
+
+std::vector<std::pair<index_t, index_t> > get_big_horizontal_topology_from_sorted(std::vector<point<int_t> > const & pins){
+    return get_MST_topology(pins);
+}
+
 } // End anonymous namespace
 
 std::vector<std::pair<index_t, index_t> > get_MST_topology(std::vector<point<int_t> > const & pins){
@@ -313,7 +331,6 @@ std::int64_t RSMT_length(std::vector<point<int_t> > const & pins, index_t exacti
                 auto minmaxX = std::minmax_element(pins.begin(), pins.end(), [](point<int_t> a, point<int_t> b){ return a.x_ < b.x_; }), 
                      minmaxY = std::minmax_element(pins.begin(), pins.end(), [](point<int_t> a, point<int_t> b){ return a.y_ < b.y_; });
                 return (minmaxX.second->x_ - minmaxX.first->x_) + (minmaxY.second->y_ - minmaxY.first->y_);
-                
             }
             else{
                 return 0.0;
@@ -346,63 +363,58 @@ point<std::vector<std::pair<index_t, index_t> > > get_RSMT_topology(std::vector<
     typedef std::pair<index_t, index_t> edge_t;
 
     assert(exactitude_limit <= 10 and exactitude_limit >= 3);
-    if(pins.size() <= exactitude_limit){
-        if(pins.size() <= 3){
-            if(pins.size() == 2){
-                auto ret = std::vector<edge_t>(1, edge_t(0, 1));
-                return point<std::vector<edge_t> >(ret, ret);
-            }
-            else if(pins.size() == 3){
-                std::vector<indexed_pt> ipoints(pins.size());
-                for(index_t i=0; i<pins.size(); ++i){
-                    ipoints[i] = indexed_pt(pins[i], i);
-                }
-                auto xpoints=ipoints;
-                std::sort(xpoints.begin(), xpoints.end(), [](indexed_pt a , indexed_pt b){return a.x_ < b.x_; });
-                auto ypoints=ipoints;
-                std::sort(ypoints.begin(), ypoints.end(), [](indexed_pt a , indexed_pt b){return a.y_ < b.y_; });
-                
-                return point<std::vector<edge_t> >{{{xpoints[0].index, xpoints[1].index}, {xpoints[1].index, xpoints[2].index}}, {{ypoints[0].index, ypoints[1].index}, {ypoints[1].index, ypoints[2].index}}};
-            }
-            else{
-                return point<std::vector<edge_t> >();
-            }
+
+    // For 3 pin and fewer, the topology is very simple
+    if(pins.size() <= 2){
+        if(pins.size() == 2){
+            auto ret = std::vector<edge_t>(1, edge_t(0, 1));
+            return point<std::vector<edge_t> >(ret, ret);
         }
         else{
-            point<std::vector<edge_t> > ret;
-            std::vector<edge_t> horizontal_topology;
-            switch(pins.size()){
-                case 4:
-                    horizontal_topology = get_topology<4, 2>(pins, steiner_lookup::topologies_4);
-                    break;
-                case 5:
-                    horizontal_topology = get_topology<5, 6>(pins, steiner_lookup::topologies_5);
-                    break;
-                case 6:
-                    horizontal_topology = get_topology<6, 23>(pins, steiner_lookup::topologies_6);
-                    break;
-                case 7:
-                    horizontal_topology = get_topology<7, 111>(pins, steiner_lookup::topologies_7);
-                    break;
-                case 8:
-                    horizontal_topology = get_topology<8, 642>(pins, steiner_lookup::topologies_8);
-                    break;
-                case 9:
-                    horizontal_topology = get_topology<9, 4334>(pins, steiner_lookup::topologies_9);
-                    break;
-                case 10:
-                    horizontal_topology = get_topology<10, 33510>(pins, steiner_lookup::topologies_10);
-                    break;
-                default:
-                    abort();
-            }
-            return get_vertical_topology(pins, horizontal_topology);
+            return point<std::vector<edge_t> >();
         }
     }
+    else if(pins.size() == 3){
+        std::vector<indexed_pt> ipoints(pins.size());
+        for(index_t i=0; i<pins.size(); ++i){
+            ipoints[i] = indexed_pt(pins[i], i);
+        }
+        auto xpoints=ipoints;
+        std::sort(xpoints.begin(), xpoints.end(), [](indexed_pt a , indexed_pt b){return a.x_ < b.x_; });
+        auto ypoints=ipoints;
+        std::sort(ypoints.begin(), ypoints.end(), [](indexed_pt a , indexed_pt b){return a.y_ < b.y_; });
+        
+        return point<std::vector<edge_t> >{{{xpoints[0].index, xpoints[1].index}, {xpoints[1].index, xpoints[2].index}}, {{ypoints[0].index, ypoints[1].index}, {ypoints[1].index, ypoints[2].index}}};
+    }
     else{
-        // Silent and dumb fallback to the spanning tree
-        auto topo = get_MST_topology(pins);
-        return point<std::vector<edge_t> >(topo, topo);
+        std::vector<edge_t> horizontal_topology;
+
+        // Sort the pins by x coordinate
+        std::vector<indexed_pt> ipoints(pins.size());
+        for(index_t i=0; i<pins.size(); ++i){
+            ipoints[i] = indexed_pt(pins[i], i);
+        }
+        std::sort(ipoints.begin(), ipoints.end(), [](indexed_pt a , indexed_pt b){return a.x_ < b.x_; });
+        std::vector<point<int_t> > sorted_pins;
+        for(index_t i=0; i<pins.size(); ++i){
+            sorted_pins[i] = ipoints[i];
+        }
+
+        // Get the topology for this ordering
+        if(pins.size() <= exactitude_limit){
+            horizontal_topology = get_small_horizontal_topology_from_sorted(sorted_pins);
+        }
+        else{
+            horizontal_topology = get_big_horizontal_topology_from_sorted(sorted_pins);
+        }
+
+        // Back to the original ordering
+        for(auto & E : horizontal_topology){
+            E.first = ipoints[E.first].index;
+            E.second = ipoints[E.second].index;
+        }
+
+        return get_vertical_topology(sorted_pins, horizontal_topology);
     }
 }
 
