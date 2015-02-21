@@ -774,8 +774,15 @@ region_distribution::region_distribution(
 
     placement_regions_ = prepare_regions(1, 1);
 
-    cell_density_mul = default_density_mul;
-
+    if(full_density){
+        cell_density_mul = default_density_mul;
+    }
+    else{
+        cell_density_mul = placement_regions_[0].capacity() / tot_area;
+        if(cell_density_mul < full_density_mul){
+            throw std::runtime_error("The density required is above 1");
+        }
+    }
 
     for(index_t i=0; i<cell_list_.size(); ++i){
         movable_cell const & c = cell_list_[i];
@@ -788,6 +795,9 @@ region_distribution::region_distribution(
 
 region_distribution region_distribution::full_density_distribution(box<int_t> placement_area, netlist const & circuit, placement_t const & pl, std::vector<density_limit> const & density_map){
     return region_distribution(placement_area, circuit, pl, density_map, true);
+}
+region_distribution region_distribution::uniform_density_distribution(box<int_t> placement_area, netlist const & circuit, placement_t const & pl, std::vector<density_limit> const & density_map){
+    return region_distribution(placement_area, circuit, pl, density_map, false);
 }
 
 std::vector<region_distribution::movable_cell> region_distribution::export_positions() const{

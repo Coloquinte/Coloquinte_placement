@@ -382,7 +382,7 @@ point<linear_system> get_linear_pulling_forces (netlist const & circuit, placeme
 }
 
 region_distribution get_rough_legalizer(netlist const & circuit, placement_t const & pl, box<int_t> surface){
-    return region_distribution::full_density_distribution(surface, circuit, pl);
+    return region_distribution::uniform_density_distribution(surface, circuit, pl);
 }
 
 void get_rough_legalization(netlist const & circuit, placement_t & pl, region_distribution const & legalizer){
