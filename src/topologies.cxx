@@ -8,22 +8,71 @@
 #include <set>
 
 namespace coloquinte{
-namespace {
+using edge_t = std::pair<index_t, index_t>;
 
-struct indexed_pt : point<int_t>{
-    index_t index;
-    indexed_pt(point<int_t> pt, index_t pos) : point<int_t>(pt), index(pos) {}
-    indexed_pt(){}
+namespace{
+struct minmax_t{
+    int_t min, max;
+
+    minmax_t(int_t mn, int_t mx) : min(mn), max(mx) {}
+    minmax_t() {}
+    void merge(minmax_t const o){
+        min = std::min(o.max, min);
+        max = std::max(o.min, max);
+    }
+    void merge(int_t const p){
+        min = std::min(p, min);
+        max = std::max(p, max);
+    }
 };
+}
 
-template<int n, int array_size>
-int_t get_wirelength(std::vector<point<int_t> > const & pins, std::array<Hconnectivity<n>, array_size> const & lookups){
-    std::array<point<int_t>, n> points;
-    for(index_t i=0; i<n; ++i){
-        points[i] = pins[i];
+namespace steiner_lookup{
+
+template<int pin_cnt>
+int_t Hconnectivity<pin_cnt>::get_wirelength(std::array<point<int_t>, pin_cnt> const sorted_points) const{
+    std::array<minmax_t, pin_cnt-2> minmaxs;
+    for(index_t i=0; i<pin_cnt-2; ++i){
+        minmaxs[i] = minmax_t(sorted_points[i+1].y_, sorted_points[i+1].y_);
+    }
+    std::uint8_t b_con = extremes & 15u, e_con = extremes >> 4;
+    minmaxs[b_con].merge(sorted_points.front() .y_);
+    minmaxs[e_con].merge(sorted_points.back()  .y_);
+    for(std::uint8_t const E : connexions){
+        minmaxs[(E >> 4)].merge(minmaxs[(E & 15u)]);
+    }
+    int_t cost = sorted_points.back().x_ - sorted_points.front().x_ + sorted_points[b_con+1].x_ - sorted_points[e_con+1].x_;
+    for(std::uint8_t const E : connexions){
+        cost += std::abs(sorted_points[(E >> 4) +1].x_ - sorted_points[(E & 15u) +1].x_);
+    }
+    for(index_t i=0; i<pin_cnt-2; ++i){
+        cost += (minmaxs[i].max - minmaxs[i].min);
+    }
+    return cost;
+}
+
+template<int pin_cnt>
+std::array<edge_t, pin_cnt-1> Hconnectivity<pin_cnt>::get_x_topology(std::array<point<int_t>, pin_cnt> const sorted_points) const{
+    std::array<edge_t, pin_cnt-1> ret;
+    std::uint8_t b_con = extremes & 15u, e_con = extremes >> 4;
+    ret[0] = edge_t(0, b_con+1);
+    ret[1] = edge_t(pin_cnt-1, e_con+1);
+    for(index_t i=0; i<pin_cnt-3; ++i){
+        std::uint8_t E = connexions[i];
+        ret[i+2] = edge_t((E & 15u) +1, (E >> 4) +1);
     }
 
-    std::sort(points.begin(), points.end(), [](point<int_t> a , point<int_t> b){return a.x_ < b.x_; });
+    return ret;
+}
+} // End namespace steiner_lookup
+
+namespace {
+
+template<int n, int array_size>
+int_t get_wirelength_from_sorted(std::vector<point<int_t> > const & pins, std::array<steiner_lookup::Hconnectivity<n>, array_size> const & lookups){
+    std::array<point<int_t>, n> points;
+    std::copy_n(pins.begin(), n, points.begin());
+
     int_t cost = std::numeric_limits<int_t>::max();
     for(auto const L : lookups){
         cost = std::min(cost, L.get_wirelength(points));
@@ -31,8 +80,71 @@ int_t get_wirelength(std::vector<point<int_t> > const & pins, std::array<Hconnec
     return cost;
 }
 
+std::int64_t get_wirelength_from_topo(std::vector<point<int_t> > const & points, std::vector<std::pair<index_t, index_t> > Htopo){
+    std::vector<minmax_t> minmaxs(points.size());
+    for(index_t i=0; i<points.size(); ++i){
+        minmaxs[i] = minmax_t(points[i].y_, points[i].y_);
+    }
+    for(auto const E : Htopo){
+        minmaxs[E.second].merge(minmaxs[E.first]);
+    }
+    std::int64_t cost = 0;
+    for(edge_t const E : Htopo){
+        cost += std::abs(points[E.first].x_ - points[E.second].x_);
+    }
+    for(index_t i=0; i<points.size(); ++i){
+        cost += (minmaxs[i].max - minmaxs[i].min);
+    }
+    return cost;
+}
+
+struct indexed_pt : point<int_t>{
+    index_t index;
+    indexed_pt(point<int_t> pt, index_t pos) : point<int_t>(pt), index(pos) {}
+    indexed_pt(){}
+};
+
+class union_find{
+	index_t* connex_representants;
+	index_t  sz;
+
+	public:
+	void merge(index_t a, index_t b){
+		connex_representants[find(a)] = b;
+	}
+
+	index_t find(index_t ind){
+		if(connex_representants[ind] != ind){
+			connex_representants[ind] = find(connex_representants[ind]);
+		}
+		return connex_representants[ind];
+	}
+
+	union_find(index_t s){
+		sz = s;
+		connex_representants = new index_t[size()];
+		for(index_t i=0; i<size(); ++i){
+			connex_representants[i] = i;
+		}
+	}
+	
+	~union_find(){
+		delete[] connex_representants;
+	}
+
+    bool is_connex(){
+        bool connex = true;
+        for(index_t i=0; i+1<size(); ++i){
+            connex = connex && (find(i) == find(i+1));
+        }
+        return connex;
+    }
+	
+	index_t size() const { return sz; }
+};
+
 template<int n, int array_size>
-std::vector<std::pair<index_t, index_t> > get_topology_from_sorted(std::vector<point<int_t> > const & pins, std::array<Hconnectivity<n>, array_size> const & lookups){
+std::vector<std::pair<index_t, index_t> > get_topology_from_sorted(std::vector<point<int_t> > const & pins, std::array<steiner_lookup::Hconnectivity<n>, array_size> const & lookups){
     std::array<point<int_t>, n> points;
     std::copy_n(pins.begin(), n, points.begin());
 
@@ -52,7 +164,6 @@ std::vector<std::pair<index_t, index_t> > get_topology_from_sorted(std::vector<p
 }
 
 point<std::vector<std::pair<index_t, index_t> > > get_vertical_topology(std::vector<point<int_t> > pins, std::vector<std::pair<index_t, index_t> > const & Htopo){
-    typedef std::pair<index_t, index_t> edge_t;
     index_t const null_ind = std::numeric_limits<index_t>::max();
 
     std::vector<indexed_pt> ipoints(pins.size());
@@ -187,10 +298,8 @@ inline void southeast_octant_neighbours(std::vector<point<int_t> > pins, std::ve
     northeast_octant_neighbours(pins, edges);
 }
 
-// TODO: cut a spanning tree, create Steiner trees for the part, then merge them
 std::vector<std::pair<index_t, index_t> > get_small_horizontal_topology_from_sorted(std::vector<point<int_t> > const & pins){
     assert(pins.size() <= 10);
-    typedef std::pair<index_t, index_t> edge_t;
 
     switch(pins.size()){
         case 2:
@@ -216,14 +325,51 @@ std::vector<std::pair<index_t, index_t> > get_small_horizontal_topology_from_sor
     }
 }
 
-std::vector<std::pair<index_t, index_t> > get_big_horizontal_topology_from_sorted(std::vector<point<int_t> > const & pins){
-    return get_MST_topology(pins);
+std::vector<std::pair<index_t, index_t> > get_big_horizontal_topology_from_sorted(std::vector<point<int_t> > const & pins, index_t exactitude_limit){
+    auto spanning = get_MST_topology(pins);
+
+    // TODO: perform local optimizations on the topology using exact Steiner tree algorithms
+
+    // Sort the tree so that it is usable when building an RSMT    
+    std::vector<edge_t> sorted_spanning;
+    std::vector<std::vector<index_t> > neighbours(pins.size());
+    for(edge_t const E : spanning){
+        neighbours[E.first].push_back(E.second);
+        neighbours[E.second].push_back(E.first);
+    }
+    std::vector<index_t> to_visit;
+    std::vector<int_t> nbr_unvisited(pins.size());
+    for(index_t i=0; i<pins.size(); ++i){
+        nbr_unvisited[i] = neighbours[i].size();
+        assert(pins.size() <= 1 or nbr_unvisited[i] >= 1);
+        if(nbr_unvisited[i] == 1)
+            to_visit.push_back(i);
+    }
+    std::vector<int> visited(pins.size(), 0);
+    while(not to_visit.empty()){
+        index_t f = to_visit.back();
+        assert(visited[f] == 0);
+        visited[f] = 1;
+        to_visit.pop_back();
+        for(index_t s : neighbours[f]){
+            --nbr_unvisited[s];
+            if(visited[s] == 0){ // It is not a node we already visited
+                sorted_spanning.push_back(edge_t(f, s));
+            }
+            if(nbr_unvisited[s] == 1){
+                to_visit.push_back(s);
+            }
+        }
+    }
+    assert(sorted_spanning.size() == spanning.size());
+
+    // TODO: remove horizontal suboptimalities i.e. when the connexions to the left and right are unbalanced
+    return sorted_spanning;
 }
 
 } // End anonymous namespace
 
 std::vector<std::pair<index_t, index_t> > get_MST_topology(std::vector<point<int_t> > const & pins){
-    typedef std::pair<index_t, index_t> edge_t;
 
 	std::vector<edge_t> edges;
     
@@ -248,48 +394,9 @@ std::vector<std::pair<index_t, index_t> > get_MST_topology(std::vector<point<int
 
 	std::vector<edge_t> returned_edges;
 
-    class union_find{
-    	index_t* connex_representants;
-    	index_t  sz;
-    
-    	public:
-    	void merge(index_t a, index_t b){
-    		connex_representants[find(a)] = b;
-    	}
-    
-    	index_t find(index_t ind){
-    		if(connex_representants[ind] != ind){
-    			connex_representants[ind] = find(connex_representants[ind]);
-    		}
-    		return connex_representants[ind];
-    	}
-    
-    	union_find(index_t s){
-    		sz = s;
-    		connex_representants = new index_t[size()];
-    		for(index_t i=0; i<size(); ++i){
-    			connex_representants[i] = i;
-    		}
-    	}
-    	
-    	~union_find(){
-    		delete[] connex_representants;
-    	}
-    
-        bool is_connex(){
-            bool connex = true;
-            for(index_t i=0; i+1<size(); ++i){
-                connex = connex && (find(i) == find(i+1));
-            }
-            return connex;
-        }
-    	
-    	index_t size() const { return sz; }
-    };
-
     auto edge_length = [&](edge_t E){
         point<int_t> p1 = pins[E.first],
-                       p2 = pins[E.second];
+                     p2 = pins[E.second];
         return std::abs(p1.x_ - p2.x_) + std::abs(p1.y_ - p2.y_);
     };
 	// Perform Kruskal to get the tree
@@ -322,45 +429,52 @@ std::int64_t MST_length(std::vector<point<int_t> > const & pins){
 
 std::int64_t RSMT_length(std::vector<point<int_t> > const & pins, index_t exactitude_limit){
     assert(exactitude_limit <= 10 and exactitude_limit >= 3);
-    if(pins.size() <= exactitude_limit){
-        if(pins.size() <= 3){
-            if(pins.size() == 2){
-                return std::abs(pins[0].x_ - pins[1].x_) + std::abs(pins[0].y_ - pins[1].y_);
-            }
-            else if(pins.size() == 3){
-                auto minmaxX = std::minmax_element(pins.begin(), pins.end(), [](point<int_t> a, point<int_t> b){ return a.x_ < b.x_; }), 
-                     minmaxY = std::minmax_element(pins.begin(), pins.end(), [](point<int_t> a, point<int_t> b){ return a.y_ < b.y_; });
-                return (minmaxX.second->x_ - minmaxX.first->x_) + (minmaxY.second->y_ - minmaxY.first->y_);
-            }
-            else{
-                return 0.0;
-            }
+    if(pins.size() <= 3){
+        if(pins.size() == 2){
+            return std::abs(pins[0].x_ - pins[1].x_) + std::abs(pins[0].y_ - pins[1].y_);
         }
-        switch(pins.size()){
-            case 4:
-                return get_wirelength<4, 2>(pins, steiner_lookup::topologies_4);
-            case 5:
-                return get_wirelength<5, 6>(pins, steiner_lookup::topologies_5);
-            case 6:
-                return get_wirelength<6, 23>(pins, steiner_lookup::topologies_6);
-            case 7:
-                return get_wirelength<7, 111>(pins, steiner_lookup::topologies_7);
-            case 8:
-                return get_wirelength<8, 642>(pins, steiner_lookup::topologies_8);
-            case 9:
-                return get_wirelength<9, 4334>(pins, steiner_lookup::topologies_9);
-            case 10:
-                return get_wirelength<10, 33510>(pins, steiner_lookup::topologies_10);
-            default:
-                abort();
+        else if(pins.size() == 3){
+            auto minmaxX = std::minmax_element(pins.begin(), pins.end(), [](point<int_t> a, point<int_t> b){ return a.x_ < b.x_; }), 
+                 minmaxY = std::minmax_element(pins.begin(), pins.end(), [](point<int_t> a, point<int_t> b){ return a.y_ < b.y_; });
+            return (minmaxX.second->x_ - minmaxX.first->x_) + (minmaxY.second->y_ - minmaxY.first->y_);
+        }
+        else{
+            return 0;
         }
     }
-    // Silent and dumb fallback to the spanning tree
-    return MST_length(pins);
+    else{
+        std::vector<point<int_t> > points = pins;
+        std::sort(points.begin(), points.end(), [](point<int_t> a , point<int_t> b){return a.x_ < b.x_; });
+
+        if(points.size() <= exactitude_limit){
+            switch(points.size()){
+                case 4:
+                    return get_wirelength_from_sorted<4, 2>(points, steiner_lookup::topologies_4);
+                case 5:
+                    return get_wirelength_from_sorted<5, 6>(points, steiner_lookup::topologies_5);
+                case 6:
+                    return get_wirelength_from_sorted<6, 23>(points, steiner_lookup::topologies_6);
+                case 7:
+                    return get_wirelength_from_sorted<7, 111>(points, steiner_lookup::topologies_7);
+                case 8:
+                    return get_wirelength_from_sorted<8, 642>(points, steiner_lookup::topologies_8);
+                case 9:
+                    return get_wirelength_from_sorted<9, 4334>(points, steiner_lookup::topologies_9);
+                case 10:
+                    return get_wirelength_from_sorted<10, 33510>(points, steiner_lookup::topologies_10);
+                default:
+                    abort();
+            }
+        }
+        else{ // Need to create the full topology, then calculate the length back
+            //return MST_length(points);
+            auto horizontal_topology = get_big_horizontal_topology_from_sorted(points, exactitude_limit);
+            return get_wirelength_from_topo(points, horizontal_topology);
+        }
+    }
 }
 
 point<std::vector<std::pair<index_t, index_t> > > get_RSMT_topology(std::vector<point<int_t> > const & pins, index_t exactitude_limit){
-    typedef std::pair<index_t, index_t> edge_t;
 
     assert(exactitude_limit <= 10 and exactitude_limit >= 3);
 
@@ -395,7 +509,7 @@ point<std::vector<std::pair<index_t, index_t> > > get_RSMT_topology(std::vector<
             ipoints[i] = indexed_pt(pins[i], i);
         }
         std::sort(ipoints.begin(), ipoints.end(), [](indexed_pt a , indexed_pt b){return a.x_ < b.x_; });
-        std::vector<point<int_t> > sorted_pins;
+        std::vector<point<int_t> > sorted_pins(pins.size());
         for(index_t i=0; i<pins.size(); ++i){
             sorted_pins[i] = ipoints[i];
         }
@@ -405,7 +519,7 @@ point<std::vector<std::pair<index_t, index_t> > > get_RSMT_topology(std::vector<
             horizontal_topology = get_small_horizontal_topology_from_sorted(sorted_pins);
         }
         else{
-            horizontal_topology = get_big_horizontal_topology_from_sorted(sorted_pins);
+            horizontal_topology = get_big_horizontal_topology_from_sorted(sorted_pins, exactitude_limit);
         }
 
         // Back to the original ordering
