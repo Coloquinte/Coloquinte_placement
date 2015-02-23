@@ -163,7 +163,7 @@ std::vector<std::pair<index_t, index_t> > get_topology_from_sorted(std::vector<p
     return std::vector<std::pair<index_t, index_t> >(ret.begin(), ret.end());
 }
 
-point<std::vector<std::pair<index_t, index_t> > > get_vertical_topology(std::vector<point<int_t> > pins, std::vector<std::pair<index_t, index_t> > const & Htopo){
+std::vector<edge_t> get_vertical_topology(std::vector<point<int_t> > pins, std::vector<edge_t> const & Htopo){
     index_t const null_ind = std::numeric_limits<index_t>::max();
 
     std::vector<indexed_pt> ipoints(pins.size());
@@ -249,7 +249,7 @@ point<std::vector<std::pair<index_t, index_t> > > get_vertical_topology(std::vec
         E.first = ipoints[E.first].index;
         E.second = ipoints[E.second].index;
     }
-    return point<std::vector<edge_t> >(Htopo, ret);
+    return ret;
 }
 
 inline void northeast_octant_neighbours(std::vector<point<int_t> > pins, std::vector<std::pair<index_t, index_t> > & edges){
@@ -325,27 +325,23 @@ std::vector<std::pair<index_t, index_t> > get_small_horizontal_topology_from_sor
     }
 }
 
-std::vector<std::pair<index_t, index_t> > get_big_horizontal_topology_from_sorted(std::vector<point<int_t> > const & pins, index_t exactitude_limit){
-    auto spanning = get_MST_topology(pins);
-
-    // TODO: perform local optimizations on the topology using exact Steiner tree algorithms
-
-    // Sort the tree so that it is usable when building an RSMT    
-    std::vector<edge_t> sorted_spanning;
-    std::vector<std::vector<index_t> > neighbours(pins.size());
-    for(edge_t const E : spanning){
+// Get an ordering of the edges that is compatible with the processing functions
+std::vector<edge_t> get_tree_topo_sort(std::vector<edge_t> const & topo){
+    std::vector<edge_t> sorted_topo;
+    std::vector<std::vector<index_t> > neighbours(topo.size()+1);
+    for(edge_t const E : topo){
         neighbours[E.first].push_back(E.second);
         neighbours[E.second].push_back(E.first);
     }
     std::vector<index_t> to_visit;
-    std::vector<int_t> nbr_unvisited(pins.size());
-    for(index_t i=0; i<pins.size(); ++i){
+    std::vector<int_t> nbr_unvisited(topo.size()+1);
+    for(index_t i=0; i<=topo.size(); ++i){
         nbr_unvisited[i] = neighbours[i].size();
-        assert(pins.size() <= 1 or nbr_unvisited[i] >= 1);
+        assert(topo.size() == 0 or nbr_unvisited[i] >= 1);
         if(nbr_unvisited[i] == 1)
             to_visit.push_back(i);
     }
-    std::vector<int> visited(pins.size(), 0);
+    std::vector<int> visited(topo.size()+1, 0);
     while(not to_visit.empty()){
         index_t f = to_visit.back();
         assert(visited[f] == 0);
@@ -354,17 +350,36 @@ std::vector<std::pair<index_t, index_t> > get_big_horizontal_topology_from_sorte
         for(index_t s : neighbours[f]){
             --nbr_unvisited[s];
             if(visited[s] == 0){ // It is not a node we already visited
-                sorted_spanning.push_back(edge_t(f, s));
+                sorted_topo.push_back(edge_t(f, s));
             }
             if(nbr_unvisited[s] == 1){
                 to_visit.push_back(s);
             }
         }
     }
-    assert(sorted_spanning.size() == spanning.size());
+    assert(sorted_topo.size() == topo.size());
+    return sorted_topo;
+}
 
-    // TODO: remove horizontal suboptimalities i.e. when the connexions to the left and right are unbalanced
-    return sorted_spanning;
+std::vector<edge_t> get_big_horizontal_topology_from_sorted(std::vector<point<int_t> > const & pins, index_t exactitude_limit){
+    auto spanning = get_MST_topology(pins);
+
+    // TODO: perform local optimizations on the topology using exact Steiner tree algorithms
+
+    // Remove horizontal suboptimalities i.e. when the connexions to the left and right are unbalanced
+    // Reuse existing code by translation to vertical topology
+    auto first_Htopo = get_tree_topo_sort(spanning);
+    auto Vtopo = get_vertical_topology(pins, first_Htopo);
+    Vtopo = get_tree_topo_sort(Vtopo);
+
+    std::vector<point<int_t> > inverted_coords = pins;
+    for(point<int_t> & pt : inverted_coords){
+        std::swap(pt.x_, pt.y_);
+    }
+    auto Htopo = get_vertical_topology(inverted_coords, Vtopo);
+
+    // Sort the tree so that it is usable when building an RSMT    
+    return get_tree_topo_sort(Htopo);
 }
 
 } // End anonymous namespace
@@ -528,7 +543,7 @@ point<std::vector<std::pair<index_t, index_t> > > get_RSMT_topology(std::vector<
             E.second = ipoints[E.second].index;
         }
 
-        return get_vertical_topology(sorted_pins, horizontal_topology);
+        return point<std::vector<edge_t> >(horizontal_topology, get_vertical_topology(sorted_pins, horizontal_topology));
     }
 }
 
