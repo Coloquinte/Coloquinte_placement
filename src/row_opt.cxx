@@ -9,32 +9,79 @@ namespace coloquinte{
 namespace dp{
 
 namespace{
-struct net_properties{
-    int_t ext_pos_min, ext_pos_max, weight;
-    index_t cell_fst, cell_lst;
-    std::pair<int_t, int_t> offs_fst, offs_lst;
-    bool external_pins;
 
-    net_properties(){
-        weight = 1;
-        ext_pos_min = std::numeric_limits<int_t>::max();
-        ext_pos_max = -std::numeric_limits<int_t>::min();
-        cell_fst = std::numeric_limits<index_t>::max();
-        cell_lst = 0;
-        auto empty_pins = std::pair<int_t, int_t>(ext_pos_min, ext_pos_max);
-        offs_fst = empty_pins;
-        offs_lst = empty_pins;
-        external_pins = false;
+struct minmax{
+    int_t min, max;
+    minmax(){}
+    minmax(int_t f, int_t s) : min(f), max(s){}
+    void merge(minmax const o){
+        min = std::min(min, o.min);
+        max = std::max(max, o.max);
+    }
+    void merge(int_t const o){
+        merge(minmax(o, o));
     }
 };
 
-std::vector<net_properties> get_net_properties(netlist const & circuit, detailed_placement const & pl, std::vector<index_t> const & cells){
+struct Hnet_group{
+    struct Hpin{
+        index_t cell_index; // Not indexes in the circuit!!! Rather in the internal algorithm
+        minmax offset;
+        bool operator<(Hpin const o) const{ return cell_index < o.cell_index; }
+    };
+    struct Hnet{
+        bool has_ext_pins;
+        minmax ext_pins;
+        int_t weight;
+
+        Hnet(){
+            has_ext_pins = false;
+            ext_pins = minmax(std::numeric_limits<int_t>::max(), 0);
+            weight = 1;
+        }
+    };
+
+    std::vector<index_t> net_limits;
+    std::vector<Hnet> nets;
+
+    std::vector<Hpin> pins;
+    std::vector<int_t> cell_widths;
+
+    Hnet_group(){
+        net_limits.push_back(0);
+    }
+
+    std::int64_t get_cost(std::vector<int_t> const & pos) const{
+        std::int64_t cost=0;
+        for(index_t n=0; n<nets.size(); ++n){
+            auto cur_net = nets[n];
+
+            minmax mm(std::numeric_limits<int_t>::max(), std::numeric_limits<int_t>::min());
+            if(cur_net.has_ext_pins){
+                mm = cur_net.ext_pins;
+            }
+
+            assert(net_limits[n+1] > net_limits[n]);
+            for(index_t p=net_limits[n]; p<net_limits[n+1]; ++p){
+                int_t cur_pos = pos[pins[p].cell_index];
+                mm.merge( minmax(cur_pos + pins[p].offset.min, cur_pos + pins[p].offset.max) );
+            }
+            cost += static_cast<std::int64_t>(cur_net.weight) * (mm.max - mm.min);
+        }
+        return cost;
+    }
+
+};
+
+Hnet_group get_B2B_netgroup(netlist const & circuit, detailed_placement const & pl, std::vector<index_t> const & cells){
     struct order_gettr{
         index_t cell_ind, seq_order;
         bool operator<(order_gettr const o) const{ return cell_ind < o.cell_ind; }
         bool operator<(index_t const o) const{ return cell_ind < o; }
         order_gettr(index_t c, index_t i) : cell_ind(c), seq_order(i) {}
     };
+
+    Hnet_group ret;
 
     std::vector<order_gettr> cells_in_row;
     for(index_t i=0; i<cells.size(); ++i){
@@ -44,6 +91,7 @@ std::vector<net_properties> get_net_properties(netlist const & circuit, detailed
 
     std::vector<index_t> involved_nets;
     for(index_t c : cells){
+        ret.cell_widths.push_back(circuit.get_cell(c).size.x_);
         for(netlist::pin_t p : circuit.get_cell(c)){
             involved_nets.push_back(p.net_ind);
         }
@@ -52,49 +100,60 @@ std::vector<net_properties> get_net_properties(netlist const & circuit, detailed
     std::sort(involved_nets.begin(), involved_nets.end());
     involved_nets.resize(std::distance(involved_nets.begin(), std::unique(involved_nets.begin(), involved_nets.end())));
 
-    std::vector<net_properties> net_props;
 
     for(index_t n : involved_nets){
-        net_properties cur_net;
+        Hnet_group::Hnet cur_net;
         cur_net.weight = circuit.get_net(n).weight; 
 
+        std::vector<Hnet_group::Hpin> new_pins;
         for(netlist::pin_t p : circuit.get_net(n)){
             auto it = std::lower_bound(cells_in_row.begin(), cells_in_row.end(), p.cell_ind);
             if(it != cells_in_row.end() and it->cell_ind == p.cell_ind){
                 // Found a pin on the row
-                if(it->seq_order < cur_net.cell_fst){
-                    cur_net.cell_fst = it->seq_order;
-                    cur_net.offs_fst = std::pair<int_t, int_t>(p.offset.x_, p.offset.x_);
-                }
-                else if(it->seq_order == cur_net.cell_fst){
-                    cur_net.offs_fst.first  = std::min(p.offset.x_, cur_net.offs_fst.first);
-                    cur_net.offs_fst.second = std::max(p.offset.x_, cur_net.offs_fst.second);
-                }
-                if(it->seq_order > cur_net.cell_lst){
-                    cur_net.cell_lst = it->seq_order;
-                    cur_net.offs_lst = std::pair<int_t, int_t>(p.offset.x_, p.offset.x_);
-                }
-                else if(it->seq_order == cur_net.cell_lst){
-                    cur_net.offs_lst.first  = std::min(p.offset.x_, cur_net.offs_lst.first);
-                    cur_net.offs_lst.second = std::max(p.offset.x_, cur_net.offs_lst.second);
-                }
+                Hnet_group::Hpin new_pin;
+                new_pin.cell_index = it->seq_order;
+                int_t offs = pl.plt_.orientations_[p.cell_ind].x_ ? p.offset.x_ : circuit.get_cell(p.cell_ind).size.x_ - p.offset.x_;
+                new_pin.offset = minmax(offs, offs);
+                new_pins.push_back(new_pin);
             }
             else{ // Found a pin which remains fixed for this round
-                cur_net.external_pins = true;
+                cur_net.has_ext_pins = true;
 
                 int_t pos = pl.plt_.positions_[p.cell_ind].x_ + (pl.plt_.orientations_[p.cell_ind].x_ ? p.offset.x_ : circuit.get_cell(p.cell_ind).size.x_ - p.offset.x_);
-                cur_net.ext_pos_min = std::min(pos, cur_net.ext_pos_min);
-                cur_net.ext_pos_max = std::max(pos, cur_net.ext_pos_max);
+                cur_net.ext_pins.merge(pos);
             }
         }
-        net_props.push_back(cur_net);
+        std::sort(new_pins.begin(), new_pins.end());
+        assert(not new_pins.empty());
+        
+        // Uniquify just in case there are several pins on the net on a single cell
+        {
+            index_t j=0;
+            auto prev_pin = new_pins[0];
+            for(auto it = new_pins.begin()+1; it != new_pins.end(); ++it){
+                if(it->cell_index == prev_pin.cell_index){
+                    prev_pin.offset.merge(it->offset);
+                }
+                else{
+                    new_pins[j] = prev_pin;
+                    ++j;
+                    prev_pin = *it;
+                }
+            }
+            new_pins[j]=prev_pin;
+            new_pins.resize(j+1);
+        }
+        
+        ret.nets.push_back(cur_net);
+        ret.net_limits.push_back(ret.net_limits.back() + new_pins.size());
+        ret.pins.insert(ret.pins.end(), new_pins.begin(), new_pins.end());
     }
 
-    return net_props;
+    return ret;
 }
 
 // Optimizes an ordered sequence of standard cells on the same row, returns the cost and the corresponding positions
-inline std::int64_t optimize_convex_sequence(netlist const & circuit, detailed_placement const & pl, std::vector<index_t> const & cells, std::vector<int_t> & positions, int_t lower_lim, int_t upper_lim){
+inline std::int64_t optimize_convex_sequence(Hnet_group const & nets, std::vector<index_t> const & permutation, std::vector<int_t> & positions, int_t lower_lim, int_t upper_lim){
     struct cell_bound{
         index_t c;
         int_t pos;
@@ -103,36 +162,45 @@ inline std::int64_t optimize_convex_sequence(netlist const & circuit, detailed_p
         cell_bound(index_t order, int_t p, int_t s) : c(order), pos(p), slope(s) {}
     };
 
-    auto net_props = get_net_properties(circuit, pl, cells);
+    // Get the widths of the cells in row order
+    std::vector<int_t> loc_widths(permutation.size());
+    for(index_t i=0; i<permutation.size(); ++i) loc_widths[permutation[i]] = nets.cell_widths[i];
 
     std::vector<cell_bound> bounds;
-    std::vector<int_t> right_slopes(cells.size(), 0);
-    for(auto const cur_net : net_props){
-        if(cur_net.external_pins){
-            index_t fst_c = cells[cur_net.cell_fst],
-                    lst_c = cells[cur_net.cell_lst];
-            int_t fst_pin_offs = (pl.plt_.orientations_[fst_c].x_ ?
-                cur_net.offs_fst.first : circuit.get_cell(fst_c).size.x_ - cur_net.offs_fst.second);
-            int_t lst_pin_offs = (pl.plt_.orientations_[lst_c].x_ ?
-                cur_net.offs_lst.second : circuit.get_cell(lst_c).size.x_ - cur_net.offs_lst.first);
-
-            bounds.push_back(cell_bound(cur_net.cell_fst, cur_net.ext_pos_min - fst_pin_offs, cur_net.weight));
-            bounds.push_back(cell_bound(cur_net.cell_lst, cur_net.ext_pos_max - lst_pin_offs, cur_net.weight));
-
-            right_slopes[cur_net.cell_lst] += cur_net.weight;
+    std::vector<int_t> right_slopes(permutation.size(), 0);
+    for(index_t n=0; n<nets.nets.size(); ++n){
+        index_t fst_c=std::numeric_limits<index_t>::max(), lst_c=0;
+        int_t fst_pin_offs=0, lst_pin_offs=0;
+        assert(nets.net_limits[n+1] > nets.net_limits[n]);
+        auto cur_net = nets.nets[n];
+        for(index_t p=nets.net_limits[n]; p<nets.net_limits[n+1]; ++p){
+            // Permutation: index in the Hnet_group to index in the row
+            index_t cur_cell = permutation[nets.pins[p].cell_index];
+            if(cur_cell < fst_c){
+                fst_c = cur_cell;
+                fst_pin_offs = nets.pins[p].offset.min;
+            }
+            if(cur_cell >= lst_c){
+                lst_c = cur_cell;
+                lst_pin_offs = nets.pins[p].offset.max;
+            }
         }
-        else if(cur_net.cell_fst != cur_net.cell_lst){
-            right_slopes[cur_net.cell_lst] += cur_net.weight;
-            right_slopes[cur_net.cell_fst] -= cur_net.weight;
+        if(cur_net.has_ext_pins){
+            bounds.push_back(cell_bound(fst_c, cur_net.ext_pins.min - fst_pin_offs, cur_net.weight));
+            bounds.push_back(cell_bound(lst_c, cur_net.ext_pins.max - lst_pin_offs, cur_net.weight));
+
+            right_slopes[lst_c] += cur_net.weight;
+        }
+        else{
+            right_slopes[lst_c] += cur_net.weight;
+            right_slopes[fst_c] -= cur_net.weight;
         }
     }
     std::sort(bounds.begin(), bounds.end());
 
     full_single_row OSRP;
-    for(index_t i=0, j=0; i<cells.size(); ++i){
-        index_t cur_cell_ind = cells[i];
-
-        OSRP.push_cell(circuit.get_cell(cur_cell_ind).size.x_, lower_lim, upper_lim);
+    for(index_t i=0, j=0; i<permutation.size(); ++i){
+        OSRP.push_cell(loc_widths[i], lower_lim, upper_lim);
         OSRP.push_slope(right_slopes[i]);
         for(; j<bounds.size() and bounds[j].c == i; ++j){
             OSRP.push_bound(bounds[j].pos, bounds[j].slope);
@@ -141,23 +209,11 @@ inline std::int64_t optimize_convex_sequence(netlist const & circuit, detailed_p
 
     positions = OSRP.get_placement();
 
-    std::int64_t cost = 0;
-    for(auto const cur_net : net_props){
-        index_t fst_c = cells[cur_net.cell_fst],
-                lst_c = cells[cur_net.cell_lst];
-        int_t fst_pin_offs = (pl.plt_.orientations_[fst_c].x_ ?
-            cur_net.offs_fst.first : circuit.get_cell(fst_c).size.x_ - cur_net.offs_fst.second);
-        int_t lst_pin_offs = (pl.plt_.orientations_[lst_c].x_ ?
-            cur_net.offs_lst.second : circuit.get_cell(lst_c).size.x_ - cur_net.offs_lst.first);
-
-        if(cur_net.external_pins){
-            cost += (std::max(cur_net.ext_pos_max, positions[cur_net.cell_lst] + lst_pin_offs) - std::min(cur_net.ext_pos_min, positions[cur_net.cell_fst] + fst_pin_offs));
-        }
-        else{
-            cost += (lst_pin_offs - fst_pin_offs);
-        }
+    auto permuted_positions = positions;
+    for(index_t i=0; i<permutation.size(); ++i){
+        permuted_positions[i] = positions[permutation[i]];
     }
-    return cost;
+    return nets.get_cost(permuted_positions);
 }
 } // End anonymous namespace
 
@@ -179,8 +235,14 @@ void OSRP_convex_HPWL(netlist const & circuit, detailed_placement & pl){
                 // Limits of the placement region for the cells taken
                 int_t lower_lim = pl.get_limit_positions(circuit, cells.front()).first,
                       upper_lim = pl.get_limit_positions(circuit, cells.back()).second;
+
+                Hnet_group nets = get_B2B_netgroup(circuit, pl, cells);
+
+                std::vector<index_t> no_permutation(cells.size());
+                for(index_t i=0; i<cells.size(); ++i) no_permutation[i] = i;
+
                 std::vector<int_t> final_positions;
-                optimize_convex_sequence(circuit, pl, cells, final_positions, lower_lim, upper_lim);
+                optimize_convex_sequence(nets, no_permutation, final_positions, lower_lim, upper_lim);
 
                 // Update the positions
                 for(index_t i=0; i<cells.size(); ++i){
@@ -218,31 +280,37 @@ void swaps_row_HPWL(netlist const & circuit, detailed_placement & pl, index_t ra
                 int_t lower_lim = pl.get_limit_positions(circuit, cells.front()).first,
                       upper_lim = pl.get_limit_positions(circuit, cells.back()).second;
 
+                Hnet_group nets = get_B2B_netgroup(circuit, pl, cells);
+
                 std::int64_t best_cost = std::numeric_limits<std::int64_t>::max();
                 std::vector<int_t> positions(cells.size());
-                std::vector<index_t> best_permutation = cells;
-                std::vector<int_t> best_positions(cells.size());;
-                std::vector<index_t> old_permutation = cells;
+                std::vector<int_t> best_positions(cells.size());
+
+                std::vector<index_t> permutation(cells.size());
+                for(index_t i=0; i<cells.size(); ++i) permutation[i] = i;
+                std::vector<index_t> best_permutation;
 
                 // Check every possible permutation of the cells
-                std::sort(cells.begin(), cells.end());
                 do{
-                    std::int64_t cur_cost = optimize_convex_sequence(circuit, pl, cells, positions, lower_lim, upper_lim);
-                    assert(std::isfinite(cur_cost) );
-                    if(cur_cost < best_cost){
+                    std::int64_t cur_cost = optimize_convex_sequence(nets, permutation, positions, lower_lim, upper_lim);
+                    if(cur_cost <= best_cost){
                         best_cost = cur_cost;
-                        best_permutation = cells;
+                        best_permutation = permutation;
                         best_positions = positions;
                     }
-                }while(std::next_permutation(cells.begin(), cells.end()));
-    
-                cells = best_permutation;
+                }while(std::next_permutation(permutation.begin(), permutation.end()));
+                assert(best_cost < std::numeric_limits<std::int64_t>::max());
+
+                std::vector<index_t> new_cell_order(cells.size());
                 // Update the positions and the topology
                 for(index_t i=0; i<cells.size(); ++i){
-                    pl.plt_.positions_[cells[i]].x_ = best_positions[i];
+                    index_t r_ind = best_permutation[i]; // In the row from in the Hnet_group
+                    pl.plt_.positions_[cells[i]].x_ = best_positions[r_ind];
+                    new_cell_order[r_ind] = cells[i];
                 }
 
-                pl.reorder_standard_cells(old_permutation, cells);
+                pl.reorder_standard_cells(cells, new_cell_order);
+                cells = new_cell_order;
            }
     
             if(OSRP_cell != null_ind){
