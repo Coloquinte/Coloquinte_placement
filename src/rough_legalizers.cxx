@@ -649,10 +649,10 @@ void region_distribution::redo_line_partitions(){
 
         std::vector<t1D_elt> sources, sinks;
         for(cell_ref const c : all_cells){
-            sources.push_back(t1D_elt(coord(c.pos_), c.allocated_capacity_));
+            sources.push_back(t1D_elt(static_cast<int_t>(coord(c.pos_)), c.allocated_capacity_));
         }
         for(region & reg_ref : all_regions){
-            sinks.push_back(t1D_elt(coord(reg_ref.pos_), reg_ref.capacity()));
+            sinks.push_back(t1D_elt(static_cast<int_t>(coord(reg_ref.pos_)), reg_ref.capacity()));
         }
 
         std::vector<capacity_t> const positions = transport_1D(sources, sinks);

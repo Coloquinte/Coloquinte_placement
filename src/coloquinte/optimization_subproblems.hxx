@@ -10,7 +10,7 @@
 
 namespace coloquinte{
 
-typedef std::pair<float_t, capacity_t> t1D_elt;
+typedef std::pair<int_t, capacity_t> t1D_elt;
 
 std::vector<capacity_t>  transport_1D(std::vector<t1D_elt> sources, std::vector<t1D_elt> sinks);
 std::vector<std::vector<capacity_t> > transport_convex(std::vector<capacity_t> const & capacities, std::vector<capacity_t> const & demands, std::vector<std::vector<float_t> > const & costs);
