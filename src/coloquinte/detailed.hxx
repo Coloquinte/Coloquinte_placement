@@ -63,8 +63,10 @@ void swaps_global_HPWL(netlist const & circuit, detailed_placement & pl, index_t
 void swaps_global_RSMT(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent, bool try_flip = false);
 
 void swaps_row_HPWL(netlist const & circuit, detailed_placement & pl, index_t range);
+void swaps_row_RSMT(netlist const & circuit, detailed_placement & pl, index_t range);
 
 void OSRP_convex_HPWL(netlist const & circuit, detailed_placement & pl);
+void OSRP_convex_RSMT(netlist const & circuit, detailed_placement & pl);
 
 void optimize_on_topology_HPWL(netlist const & circuit, detailed_placement & pl);
 

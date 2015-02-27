@@ -1,6 +1,7 @@
 
 #include "coloquinte/topologies.hxx"
 #include "coloquinte/circuit_helper.hxx"
+#include "coloquinte/union_find.hxx"
 
 #include <array>
 #include <algorithm>
@@ -102,45 +103,6 @@ struct indexed_pt : point<int_t>{
     index_t index;
     indexed_pt(point<int_t> pt, index_t pos) : point<int_t>(pt), index(pos) {}
     indexed_pt(){}
-};
-
-class union_find{
-	index_t* connex_representants;
-	index_t  sz;
-
-	public:
-	void merge(index_t a, index_t b){
-		connex_representants[find(a)] = b;
-	}
-
-	index_t find(index_t ind){
-		if(connex_representants[ind] != ind){
-			connex_representants[ind] = find(connex_representants[ind]);
-		}
-		return connex_representants[ind];
-	}
-
-	union_find(index_t s){
-		sz = s;
-		connex_representants = new index_t[size()];
-		for(index_t i=0; i<size(); ++i){
-			connex_representants[i] = i;
-		}
-	}
-	
-	~union_find(){
-		delete[] connex_representants;
-	}
-
-    bool is_connex(){
-        bool connex = true;
-        for(index_t i=0; i+1<size(); ++i){
-            connex = connex && (find(i) == find(i+1));
-        }
-        return connex;
-    }
-	
-	index_t size() const { return sz; }
 };
 
 template<int n, int array_size>

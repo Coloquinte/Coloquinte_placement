@@ -9,19 +9,19 @@ namespace coloquinte{
 
 struct pin_1D{
     index_t cell_ind;
-    int_t pos;
-    int_t offs;
-    bool movable;
+    int_t   pos;
+    int_t   offs;
+    bool    movable;
 
     bool operator<(pin_1D const o) const { return pos < o.pos; }
 
     pin_1D(index_t c, int_t p, int_t o, bool m) : cell_ind(c), pos(p), offs(o), movable(m){}
 };
 struct pin_2D{
-    index_t        cell_ind;
+    index_t      cell_ind;
     point<int_t> pos;
     point<int_t> offs;
-    bool movable;
+    bool         movable;
 
     pin_2D(index_t c, point<int_t> p, point<int_t> o, bool m) : cell_ind(c), pos(p), offs(o), movable(m){}
     pin_1D x() const{ return pin_1D(cell_ind, pos.x_, offs.x_, movable); }
