@@ -44,6 +44,8 @@ std::function<std::int64_t(netlist const &, detailed_placement const &, std::vec
         // Save the old values
         point<int_t> p1 = pl.plt_.positions_[c1];
         point<int_t> p2 = pl.plt_.positions_[c2];
+        point<bool> o1 = pl.plt_.orientations_[c1];
+        point<bool> o2 = pl.plt_.orientations_[c2];
 
         // Warning: won't work if the two cells don't have the same height
         pl.plt_.positions_[c1].x_ = (swp_min_c1 + swp_max_c1) / 2;
@@ -51,9 +53,11 @@ std::function<std::int64_t(netlist const &, detailed_placement const &, std::vec
         pl.plt_.positions_[c1].y_ = p2.y_;
         pl.plt_.positions_[c2].y_ = p1.y_;
 
-        if(try_flip){
-            point<bool> o1 = pl.plt_.orientations_[c1];
-            point<bool> o2 = pl.plt_.orientations_[c2];
+        // For standard cell placement, we want all the rows to be aligned in the same way
+        if( (circuit.get_cell(c1).attributes & YFlippable) != 0 and (circuit.get_cell(c2).attributes & YFlippable) != 0)
+            std::swap(pl.plt_.orientations_[c1].y_, pl.plt_.orientations_[c2].y_);
+
+        if(try_flip and (circuit.get_cell(c1).attributes & XFlippable) != 0 and (circuit.get_cell(c2).attributes & XFlippable) != 0){
             index_t bst_ind = 4;
             for(index_t i=0; i<4; ++i){
                 pl.plt_.orientations_[c1].x_ = i % 2;
@@ -89,6 +93,8 @@ std::function<std::int64_t(netlist const &, detailed_placement const &, std::vec
             // Reset the old values since we didn't swap anything
             pl.plt_.positions_[c1] = p1;
             pl.plt_.positions_[c2] = p2;
+            pl.plt_.orientations_[c1] = o1;
+            pl.plt_.orientations_[c2] = o2;
             return false;
         }
 
