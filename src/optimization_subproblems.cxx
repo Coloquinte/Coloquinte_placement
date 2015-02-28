@@ -16,7 +16,7 @@ std::vector<capacity_t>  transport_1D(std::vector<t1D_elt> sources, std::vector<
 
     struct bound{
         capacity_t pos;
-        float_t slope_diff;
+        int_t slope_diff;
         bool operator<(bound const o) const{ return pos < o.pos; }
     };
 
@@ -35,8 +35,8 @@ std::vector<capacity_t>  transport_1D(std::vector<t1D_elt> sources, std::vector<
     const capacity_t min_abs_pos = 0, max_abs_pos = prev_cap.back() - prev_dem.back();
     assert(min_abs_pos <= max_abs_pos);
 
-    auto push_bound = [&](capacity_t p, float_t s){
-        assert(s >= -0.0);
+    auto push_bound = [&](capacity_t p, int_t s){
+        assert(s >= 0);
         if(p > min_abs_pos){
             bound B;
             B.pos = p;
@@ -57,7 +57,7 @@ std::vector<capacity_t>  transport_1D(std::vector<t1D_elt> sources, std::vector<
 
     for(index_t i=0; i<sources.size(); ++i){
         // Update the optimal region
-        while(opt_r+1 < sinks.size() and 0.5 * (sinks[opt_r].first + sinks[opt_r+1].first) <= sources[i].first){
+        while(opt_r+1 < sinks.size() and (sinks[opt_r].first + sinks[opt_r+1].first)/2 < sources[i].first){
             ++opt_r;
         }
         // Update the next region
@@ -82,7 +82,7 @@ std::vector<capacity_t>  transport_1D(std::vector<t1D_elt> sources, std::vector<
         }
         // Add the bounds due to crossing the boundaries alone
         for(index_t j=first_free_r; j<opt_r; ++j){
-            assert(get_slope(i,j) <= 0.0);
+            assert(get_slope(i,j) <= 0);
             push_bound(prev_cap[j+1] - prev_dem[i], -get_slope(i, j));
         }
 
@@ -92,15 +92,15 @@ std::vector<capacity_t>  transport_1D(std::vector<t1D_elt> sources, std::vector<
         while(first_free_r+1 < sinks.size() and this_abs_pos > std::max(prev_cap[first_free_r+1] - prev_dem[i+1], min_abs_pos)){ // Absolute position that wouldn't make the cell fit in the region, and we are not in the last region yet
             capacity_t end_pos = std::max(prev_cap[first_free_r+1] - prev_dem[i+1], min_abs_pos);
 
-            float_t add_slope = get_slope(i, first_free_r);
-            float_t slope = add_slope;
+            int_t add_slope = get_slope(i, first_free_r);
+            int_t slope = add_slope;
 
-            while(not bounds.empty() and slope >= 0.0 and bounds.top().pos > end_pos){
+            while(not bounds.empty() and slope >= 0 and bounds.top().pos > end_pos){
                 this_abs_pos = bounds.top().pos;
                 slope -= bounds.top().slope_diff;
                 bounds.pop();
             }
-            if(slope >= 0.0){ // We still push: the cell completely escapes the region
+            if(slope >= 0){ // We still push: the cell completely escapes the region
                 this_abs_pos = end_pos;
                 push_bound(end_pos, add_slope-slope);
             }
