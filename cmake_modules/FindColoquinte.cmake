@@ -93,14 +93,14 @@
  
  # don't even bother under WIN32
  if(UNIX)
-   setup_search_dir(COLOQUINTE)
-   message(STATUS "COLOQUINTE_DIR_SEARCH: ${COLOQUINTE_DIR_SEARCH}")
+   setup_search_dir(IMPORTEDS)
+   message(STATUS "IMPORTEDS_DIR_SEARCH: ${IMPORTEDS_DIR_SEARCH}")
    #
    # Look for an installation.
    #
    find_path(COLOQUINTE_INCLUDE_PATH NAMES coloquinte/circuit.hxx PATHS
      # Look in other places.
-     ${COLOQUINTE_DIR_SEARCH}
+     ${IMPORTEDS_DIR_SEARCH}
      PATH_SUFFIXES include
      # Help the user find it if we cannot.
      DOC "The ${COLOQUINTE_INCLUDE_PATH_DESCRIPTION}"
@@ -108,7 +108,7 @@
  
    find_library(COLOQUINTE_LIBRARY_PATH
      NAMES coloquinte
-     PATHS ${COLOQUINTE_DIR_SEARCH}
+     PATHS ${IMPORTEDS_DIR_SEARCH}
      PATH_SUFFIXES lib${LIB_SUFFIX}
      # Help the user find it if we cannot.
      DOC "The ${COLOQUINTE_INCLUDE_PATH_DESCRIPTION}"
