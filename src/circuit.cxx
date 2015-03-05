@@ -313,9 +313,9 @@ std::vector<float_t> get_area_scales(netlist const & circuit){
         ret[i] = static_cast<float_t>(A);
         int_tot_area += A;
     }
-    float_t average_area = static_cast<float_t>(int_tot_area) / circuit.cell_cnt();
+    float_t inv_average_area = circuit.cell_cnt() / static_cast<float_t>(int_tot_area);
     for(index_t i=0; i<circuit.cell_cnt(); ++i){
-        ret[i] /= average_area;
+        ret[i] *= inv_average_area;
     }
     return ret;
 }

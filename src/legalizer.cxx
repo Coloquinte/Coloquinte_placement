@@ -297,7 +297,7 @@ std::vector<cell_leg_properties> good_legalize(
         }
 
         if(not found_location){ // We didn't find any whitespace to put the cell in
-            throw std::runtime_error("Didn't manage to pack a cell due to dumb algorithm\n");
+            throw std::runtime_error("Didn't manage to pack a cell: leave more whitespace and avoid macros near the right side\n");
         }
         else{
             //std::cout << "Cell " << C.original_cell << " of width " << C.width << " targetting row " << central_row << " and position " << C.x_pos << " put at row " << best_row << " with displacement " << best_cost / C.width << " with " << obstacles_passed << " obstacles passed" << std::endl;
