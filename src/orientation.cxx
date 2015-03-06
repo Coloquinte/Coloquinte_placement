@@ -140,10 +140,17 @@ inline void spread_orient(netlist const & circuit, placement_t & pl, std::functi
 */
 } // End anonymous namespace
 
+void optimize_x_orientations(netlist const & circuit, placement_t & pl){
+    opt_orient(circuit, pl, [](point<int_t> p) -> int_t { return p.x_; }, [](point<bool> & p) -> bool & { return p.x_; }, XFlippable);
+}
+void optimize_y_orientations(netlist const & circuit, placement_t & pl){
+    opt_orient(circuit, pl, [](point<int_t> p) -> int_t { return p.y_; }, [](point<bool> & p) -> bool & { return p.y_; }, YFlippable);
+}
+
 // Iteratively optimize feasible orientations; performs only one pass
 void optimize_exact_orientations(netlist const & circuit, placement_t & pl){
-    opt_orient(circuit, pl, [](point<int_t> p) -> int_t { return p.x_; }, [](point<bool> & p) -> bool & { return p.x_; }, XFlippable);
-    opt_orient(circuit, pl, [](point<int_t> p) -> int_t { return p.y_; }, [](point<bool> & p) -> bool & { return p.y_; }, YFlippable);
+    optimize_x_orientations(circuit, pl);
+    optimize_y_orientations(circuit, pl);
 }
 
 /*

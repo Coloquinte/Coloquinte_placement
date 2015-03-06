@@ -46,6 +46,8 @@ region_distribution get_rough_legalizer(netlist const & circuit, placement_t con
 void get_rough_legalization(netlist const & circuit, placement_t & pl, region_distribution const & legalizer);
 
 // Cell orientation optimization
+void optimize_x_orientations(netlist const & circuit, placement_t & pl);
+void optimize_y_orientations(netlist const & circuit, placement_t & pl);
 void optimize_exact_orientations(netlist const & circuit, placement_t & pl);
 //void spread_orientations(netlist const & circuit, placement_t & pl);
 
