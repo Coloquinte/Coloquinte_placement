@@ -84,11 +84,9 @@ class region_distribution{
         static void redistribute_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions);
 
         // Helper functions for 1D transportation
-        private:
-        static void distribute_new_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions, std::vector<cell_ref> cells, std::function<float_t (point<float_t>)> coord);
         public:
-        void distribute_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions, std::function<float_t (point<float_t>)> coord) const;
-        static void redistribute_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions, std::function<float_t (point<float_t>)> coord);
+        static void distribute_new_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions, std::vector<cell_ref> cells, std::function<float_t (point<float_t>)> coord);
+        static void redistribute_cells(std::vector<std::reference_wrapper<region_distribution::region> > & regions, std::function<float_t (point<float_t>)> coord);
 
         public:
         void uniquify_references();
@@ -157,8 +155,8 @@ class region_distribution{
     
     void x_bipartition();
     void y_bipartition();
-    void x_resize();
-    void y_resize();
+    void x_resize(index_t sz);
+    void y_resize(index_t sz);
     void multipartition(index_t x_width, index_t y_width);
     void multipartition(index_t width){ multipartition(width, width); }
     
