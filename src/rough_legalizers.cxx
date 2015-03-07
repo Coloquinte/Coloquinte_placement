@@ -291,21 +291,6 @@ std::vector<region_distribution::region> region_distribution::prepare_regions(in
     return ret;
 }
 
-
-void region_distribution::region::x_bipartition(region & lft, region & rgt){
-    distribute_cells(lft, rgt);
-
-    assert(lft.allocated_capacity() + rgt.allocated_capacity() == allocated_capacity());
-    assert(lft.capacity() + rgt.capacity() == capacity());
-}
-
-void region_distribution::region::y_bipartition(region & up, region & dwn){
-    distribute_cells(up, dwn);
-
-    assert(up.allocated_capacity() + dwn.allocated_capacity() == allocated_capacity());
-    assert(up.capacity() + dwn.capacity() == capacity());
-}
-
 void region_distribution::x_bipartition(){
     std::vector<region> old_placement_regions = prepare_regions(2*x_regions_cnt(), y_regions_cnt());
     placement_regions_.swap(old_placement_regions);
@@ -317,7 +302,7 @@ void region_distribution::x_bipartition(){
     for(index_t x=0; x < old_x_regions_cnt; ++x){
         for(index_t y=0; y < old_y_regions_cnt; ++y){
             index_t i = y * old_x_regions_cnt + x;
-            old_placement_regions[i].x_bipartition(get_region(2*x, y), get_region(2*x+1, y));
+            old_placement_regions[i].distribute_cells(get_region(2*x, y), get_region(2*x+1, y));
         }
     }
 }
@@ -333,7 +318,7 @@ void region_distribution::y_bipartition(){
     for(index_t x=0; x < old_x_regions_cnt; ++x){
         for(index_t y=0; y < old_y_regions_cnt; ++y){
             index_t i = y * old_x_regions_cnt + x;
-            old_placement_regions[i].y_bipartition(get_region(x, 2*y), get_region(x, 2*y+1));
+            old_placement_regions[i].distribute_cells(get_region(x, 2*y), get_region(x, 2*y+1));
         }
     }
 }
@@ -428,6 +413,8 @@ void region_distribution::region::distribute_new_cells(region & region_a, region
 
 void region_distribution::region::distribute_cells(region & a, region & b) const{
     distribute_new_cells(a, b, cell_references_);
+    assert(a.allocated_capacity() + b.allocated_capacity() == allocated_capacity());
+    assert(a.capacity() + b.capacity() == capacity());
 }
 
 void region_distribution::region::redistribute_cells(region & Ra, region & Rb){
@@ -644,8 +631,8 @@ void region_distribution::redo_line_partitions(){
         // Sort the regions by coordinate
         std::sort(all_regions.begin(), all_regions.end(), [&](std::reference_wrapper<region> const a, std::reference_wrapper<region> const b){ return coord(a.get().pos_) < coord(b.get().pos_); });
         // And the cells
-        just_uniquify(all_cells);
         std::sort(all_cells.begin(), all_cells.end(), [&](cell_ref const a, cell_ref const b){ return coord(a.pos_) < coord(b.pos_); });
+        just_uniquify(all_cells);
 
         std::vector<t1D_elt> sources, sinks;
         for(cell_ref const c : all_cells){

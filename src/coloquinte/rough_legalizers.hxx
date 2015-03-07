@@ -75,17 +75,20 @@ class region_distribution{
         public:
         void distribute_cells(region & a, region & b) const;    // Distribute the cells from one region to two
         static void redistribute_cells(region & a, region & b); // Optimizes the distribution between two regions
-        void x_bipartition(region & lft, region & rgt);
-        void y_bipartition(region & up , region & dwn);
 
         // Helper functions for multipartitioning
-        // Distribute_cells with a vector as helper function
-        // Distribute_cells and redistribute_cells without a vector to be called
         private:
         static void distribute_new_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions, std::vector<cell_ref> cells);
         public:
         void distribute_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions) const;
         static void redistribute_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions);
+
+        // Helper functions for 1D transportation
+        private:
+        static void distribute_new_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions, std::vector<cell_ref> cells, std::function<float_t (point<float_t>)> coord);
+        public:
+        void distribute_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions, std::function<float_t (point<float_t>)> coord) const;
+        static void redistribute_cells(std::vector<std::reference_wrapper<region_distribution::region> > regions, std::function<float_t (point<float_t>)> coord);
 
         public:
         void uniquify_references();
@@ -154,6 +157,8 @@ class region_distribution{
     
     void x_bipartition();
     void y_bipartition();
+    void x_resize();
+    void y_resize();
     void multipartition(index_t x_width, index_t y_width);
     void multipartition(index_t width){ multipartition(width, width); }
     
@@ -173,9 +178,6 @@ class region_distribution{
     void redo_diag_partitions(index_t len);
     void redo_multipartitions(index_t x_width, index_t y_width);
     void redo_multipartitions(index_t width){ redo_multipartitions(width, width); }
-
-    // Tries to escape local minimas with long-distance moves to non-filled places
-    void line_moves();
 
     // Try to remove duplicate fractional cells    
     void fractions_minimization();
@@ -198,6 +200,7 @@ class region_distribution{
     static region_distribution full_density_distribution(box<int_t> placement_area, netlist const & circuit, placement_t const & pl, std::vector<density_limit> const & density_map = std::vector<density_limit>());
     static region_distribution uniform_density_distribution(box<int_t> placement_area, netlist const & circuit, placement_t const & pl, std::vector<density_limit> const & density_map = std::vector<density_limit>());
 
+    void update(netlist const & circuit, placement_t const & pl);
 };
 
 inline region_distribution::movable_cell::movable_cell(){}
