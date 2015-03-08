@@ -11,7 +11,6 @@ namespace{
 inline bool try_swap(netlist const & circuit, detailed_placement & pl, index_t c1, index_t c2, bool try_flip,
 std::function<std::int64_t(netlist const &, detailed_placement const &, std::vector<index_t> const &)> get_nets_cost){
     assert(pl.cell_height(c1) == 1 and pl.cell_height(c2) == 1);
-    assert(circuit.get_cell(c1).size.y_ == circuit.get_cell(c2).size.y_); // Same (standard cell) height
     assert( (circuit.get_cell(c1).attributes & XMovable) != 0 and (circuit.get_cell(c1).attributes & YMovable) != 0);
     assert( (circuit.get_cell(c2).attributes & XMovable) != 0 and (circuit.get_cell(c2).attributes & YMovable) != 0);
 
@@ -71,7 +70,7 @@ std::function<std::int64_t(netlist const &, detailed_placement const &, std::vec
 
             // One of the orientations with the new positions was better
             if(bst_ind < 4){
-                pl.swap_topologies(c1, c2);
+                pl.swap_standard_cell_topologies(c1, c2);
                 pl.plt_.orientations_[c1].x_ = bst_ind % 2;
                 pl.plt_.orientations_[c2].x_ = bst_ind / 2;
                 // We kept the swap
@@ -86,7 +85,7 @@ std::function<std::int64_t(netlist const &, detailed_placement const &, std::vec
             }
         }
         else if(get_nets_cost(circuit, pl, involved_nets) < old_cost){
-            pl.swap_topologies(c1, c2);
+            pl.swap_standard_cell_topologies(c1, c2);
             return true;
         }
         else{

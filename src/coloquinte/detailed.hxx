@@ -52,21 +52,27 @@ struct detailed_placement{
         return neighbours_limits_[c] + r - cell_rows_[c];
     }
 
-    void swap_topologies(index_t c1, index_t c2);
+    void swap_standard_cell_topologies(index_t c1, index_t c2);
     std::pair<int_t, int_t> get_limit_positions(netlist const & circuit, index_t c);
     index_t get_first_cell_on_row(index_t r);
+    index_t get_first_standard_cell_on_row(index_t r);
     index_t get_next_cell_on_row(index_t c, index_t r);
+    index_t get_next_standard_cell_on_row(index_t c, index_t r);
     void reorder_standard_cells(std::vector<index_t> const old_order, std::vector<index_t> const new_order);
 };
 
 void swaps_global_HPWL(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent, bool try_flip = false);
 void swaps_global_RSMT(netlist const & circuit, detailed_placement & pl, index_t row_extent, index_t cell_extent, bool try_flip = false);
 
-void swaps_row_HPWL(netlist const & circuit, detailed_placement & pl, index_t range);
-void swaps_row_RSMT(netlist const & circuit, detailed_placement & pl, index_t range);
+void swaps_row_convex_HPWL(netlist const & circuit, detailed_placement & pl, index_t range);
+void swaps_row_convex_RSMT(netlist const & circuit, detailed_placement & pl, index_t range);
+void swaps_row_noncvx_HPWL(netlist const & circuit, detailed_placement & pl, index_t range);
+void swaps_row_noncvx_RSMT(netlist const & circuit, detailed_placement & pl, index_t range);
 
 void OSRP_convex_HPWL(netlist const & circuit, detailed_placement & pl);
 void OSRP_convex_RSMT(netlist const & circuit, detailed_placement & pl);
+void OSRP_noncvx_HPWL(netlist const & circuit, detailed_placement & pl);
+void OSRP_noncvx_RSMT(netlist const & circuit, detailed_placement & pl);
 
 void optimize_on_topology_HPWL(netlist const & circuit, detailed_placement & pl);
 

@@ -104,7 +104,7 @@ void detailed_placement::selfcheck() const{
     }
 }
 
-void detailed_placement::swap_topologies(index_t c1, index_t c2){
+void detailed_placement::swap_standard_cell_topologies(index_t c1, index_t c2){
     assert(cell_height(c1) == cell_height(c2));
     assert(cell_height(c1) == 1 and cell_height(c2) == 1);
 
@@ -151,9 +151,13 @@ std::pair<int_t, int_t> detailed_placement::get_limit_positions(netlist const & 
 }
 
 index_t detailed_placement::get_first_cell_on_row(index_t r){
-    index_t c = row_first_cells_[r];
+    return row_first_cells_[r];
+}
+
+index_t detailed_placement::get_first_standard_cell_on_row(index_t r){
+    index_t c = get_first_cell_on_row(r);
     while(c != null_ind and cell_height(c) != 1){
-        index_t next_c = neighbours_[neighbour_index(c, r)].second;
+        index_t next_c = get_next_cell_on_row(c, r);
         assert(c != next_c);
         c = next_c;
     }
@@ -162,8 +166,12 @@ index_t detailed_placement::get_first_cell_on_row(index_t r){
 }
 
 index_t detailed_placement::get_next_cell_on_row(index_t c, index_t r){
+    return neighbours_[neighbour_index(c, r)].second;
+}
+
+index_t detailed_placement::get_next_standard_cell_on_row(index_t c, index_t r){
     do{
-        index_t next_c = neighbours_[neighbour_index(c, r)].second;
+        index_t next_c = get_next_cell_on_row(c, r);
         assert(c != next_c);
         c = next_c;
     }while(c != null_ind and cell_height(c) != 1);

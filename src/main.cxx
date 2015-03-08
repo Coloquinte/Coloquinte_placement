@@ -189,7 +189,7 @@ int main(){
         std::cout << "Ordered row optimization" << std::endl;
         output_report(circuit, LB_pl, UB_pl);
 
-        dp::swaps_row_HPWL(circuit, LEG, 4);
+        dp::swaps_row_convex_HPWL(circuit, LEG, 4);
         dp::get_result(circuit, LEG, UB_pl);
         std::cout << "Local swaps" << std::endl;
         output_report(circuit, LB_pl, UB_pl);
