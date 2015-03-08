@@ -709,6 +709,7 @@ void region_distribution::redo_line_partitions(){
 }
 
 void region_distribution::x_resize(index_t sz){
+    assert(sz > 0);
     std::vector<region> old_placement_regions = prepare_regions(sz, y_regions_cnt());
     placement_regions_.swap(old_placement_regions);
 
@@ -732,6 +733,7 @@ void region_distribution::x_resize(index_t sz){
 }
 
 void region_distribution::y_resize(index_t sz){
+    assert(sz > 0);
     std::vector<region> old_placement_regions = prepare_regions(x_regions_cnt(), sz);
     placement_regions_.swap(old_placement_regions);
 
@@ -747,7 +749,7 @@ void region_distribution::y_resize(index_t sz){
         }
 
         std::vector<std::reference_wrapper<region> > regs;
-        for(index_t y=0; y<x_regions_cnt(); ++y){
+        for(index_t y=0; y<y_regions_cnt(); ++y){
             regs.push_back(std::reference_wrapper<region>(get_region(x, y)));
         }
         region::distribute_new_cells(regs, cells, [](point<float_t> p){ return p.y_; });
@@ -843,6 +845,17 @@ region_distribution region_distribution::full_density_distribution(box<int_t> pl
 }
 region_distribution region_distribution::uniform_density_distribution(box<int_t> placement_area, netlist const & circuit, placement_t const & pl, std::vector<density_limit> const & density_map){
     return region_distribution(placement_area, circuit, pl, density_map, false);
+}
+
+void region_distribution::update(netlist const & circuit, placement_t const & pl){
+    for(movable_cell & c : cell_list_){
+        c.pos_ = pl.positions_[c.index_in_placement_];
+    }
+    for(region & R : placement_regions_){
+        for(cell_ref & c : R.cell_references_){
+            c.pos_ = cell_list_[c.index_in_list_].pos_;
+        }
+    }
 }
 
 std::vector<region_distribution::movable_cell> region_distribution::export_positions() const{
