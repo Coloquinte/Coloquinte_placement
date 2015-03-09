@@ -849,7 +849,8 @@ region_distribution region_distribution::uniform_density_distribution(box<int_t>
 
 void region_distribution::update(netlist const & circuit, placement_t const & pl){
     for(movable_cell & c : cell_list_){
-        c.pos_ = pl.positions_[c.index_in_placement_];
+        index_t i = c.index_in_placement_;
+        c.pos_ = static_cast<point<float_t> >(pl.positions_[i]) + 0.5f * static_cast<point<float_t> >(circuit.get_cell(i).size);
     }
     for(region & R : placement_regions_){
         for(cell_ref & c : R.cell_references_){
