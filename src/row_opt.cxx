@@ -224,14 +224,6 @@ Hnet_group get_RSMT_netgroup(netlist const & circuit, detailed_placement const &
 
 // Optimizes an ordered sequence of standard cells on the same row, returns the cost and the corresponding positions
 inline std::int64_t optimize_convex_sequence(Hnet_group const & nets, std::vector<index_t> const & permutation, std::vector<int_t> & positions, std::vector<std::pair<int_t, int_t> > const & cell_ranges){
-    struct cell_bound{
-        index_t c;
-        int_t pos;
-        int_t slope;
-        bool operator<(cell_bound const o) const{ return c < o.c; }
-        cell_bound(index_t order, int_t p, int_t s) : c(order), pos(p), slope(s) {}
-    };
-
     // Get the widths of the cells in row order
     std::vector<int_t> loc_widths(permutation.size());
     std::vector<std::pair<int_t, int_t> > loc_ranges(permutation.size());
@@ -270,18 +262,8 @@ inline std::int64_t optimize_convex_sequence(Hnet_group const & nets, std::vecto
             right_slopes[fst_c] -= cur_net.weight;
         }
     }
-    std::sort(bounds.begin(), bounds.end());
 
-    full_single_row OSRP;
-    for(index_t i=0, j=0; i<permutation.size(); ++i){
-        OSRP.push_cell(loc_widths[i], loc_ranges[i].first, loc_ranges[i].second);
-        OSRP.push_slope(right_slopes[i]);
-        for(; j<bounds.size() and bounds[j].c == i; ++j){
-            OSRP.push_bound(bounds[j].pos, bounds[j].slope);
-        }
-    }
-
-    positions = OSRP.get_placement();
+    positions = place_convex_single_row(loc_widths, loc_ranges, bounds, right_slopes);
 
     auto permuted_positions = positions;
     for(index_t i=0; i<permutation.size(); ++i){

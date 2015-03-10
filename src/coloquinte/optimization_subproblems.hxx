@@ -67,37 +67,16 @@ class OSRP_leg{
     std::vector<result_t> get_placement() const;
 };
 
-
-class full_single_row{
-    struct bound{
-        int_t abs_pos;
-        int_t slope_diff;
-
-        bool operator<(bound const o) const{ return abs_pos < o.abs_pos; }
-        bound(int_t p, int_t s) : abs_pos(p), slope_diff(s) {}
-    };
-
-    int_t cur_slope;
-    int_t lower, upper;
-
-    std::vector<int_t> prev_width;
-    std::vector<int_t> constraining_pos;
-    std::priority_queue<bound> bounds;
-
-    void update_positions();
-
-    public:
-
-    // Low-level functions to avoid internally building vectors
-    void push_cell(int_t width, int_t lower_lim, int_t upper_lim);  // Give the characteristics for a cell
-    void push_bound(int_t offset, int_t slope_diff);              // Push a bound for this cell
-    void push_slope(int_t right_slope);                           // Push additional slope
-
-    // Get the result
-    std::vector<int_t> get_placement();
-
-    full_single_row() : cur_slope(0), lower(std::numeric_limits<int_t>::min()), upper(std::numeric_limits<int_t>::max()), prev_width(1, 0) {}
+struct cell_bound{
+    index_t c;
+    int_t pos;
+    int_t slope;
+    bool operator<(cell_bound const o) const{ return c < o.c; }
+    cell_bound(index_t order, int_t p, int_t s) : c(order), pos(p), slope(s) {}
 };
+
+std::vector<int_t> place_convex_single_row(std::vector<int_t> widths, std::vector<std::pair<int_t, int_t> > ranges, std::vector<cell_bound> bounds, std::vector<int_t> const_slopes);
+std::vector<int_t> place_noncvx_single_row(std::vector<int_t> widths, std::vector<std::pair<int_t, int_t> > ranges, std::vector<int> flippables, std::vector<cell_bound> bounds);
 
 template<typename T>
 inline T OSRP_leg<T>::get_displacement(legalizable_task<T> const newly_pushed, bool update){
@@ -155,53 +134,6 @@ inline T OSRP_leg<T>::get_displacement(legalizable_task<T> const newly_pushed, b
     }
 
     return cur_cost + width * std::abs(final_abs_pos - target_abs_pos); // Add the cost of the new cell
-}
-
-
-inline void full_single_row::update_positions(){
-    int_t cur_pos = upper;
-    // If we didn't push the position of the row
-    if(constraining_pos.size() + 1 < prev_width.size()){
-        while(not bounds.empty() and (cur_slope > 0 or bounds.top().abs_pos > upper)){
-            cur_slope -= bounds.top().slope_diff;
-            cur_pos = bounds.top().abs_pos;
-            bounds.pop();
-        }
-        int_t final_abs_pos = std::max(std::min(cur_pos, upper), lower);
-        constraining_pos.push_back(final_abs_pos);
-        if(cur_slope < 0){
-            bounds.push(bound(final_abs_pos, -cur_slope));
-        }
-    }
-}
-
-inline void full_single_row::push_cell(int_t width, int_t lower_lim, int_t upper_lim){
-    update_positions();
-
-    lower = std::max(lower, lower_lim - prev_width.back());
-    prev_width.push_back(width + prev_width.back());
-    upper = upper_lim - prev_width.back();
-    cur_slope = 0;
-}
-
-inline void full_single_row::push_slope(int_t right_slope){
-    cur_slope += right_slope;
-}
-
-inline void full_single_row::push_bound(int_t position, int_t slope_diff){
-    assert(constraining_pos.size() + 1 < prev_width.size());
-    bounds.push(bound(position - prev_width[prev_width.size()-2], slope_diff));
-}
-
-inline std::vector<int_t> full_single_row::get_placement(){
-    update_positions();
-
-    auto vals = std::vector<int_t>(constraining_pos.size());
-    std::partial_sum(constraining_pos.rbegin(), constraining_pos.rend(), vals.rbegin(), [](int_t a, int_t b)->int_t{ return std::min(a,b); });
-    for(index_t i=0; i<vals.size(); ++i){
-        vals[i] += prev_width[i];
-    }
-    return vals;
 }
 
 template<typename T>
