@@ -527,7 +527,7 @@ inline std::vector<int_t> full_single_row::get_placement(){
 
 } // End anonymous namespace
 
-std::vector<int_t> place_convex_single_row(std::vector<int_t> widths, std::vector<std::pair<int_t, int_t> > ranges, std::vector<cell_bound> bounds, std::vector<int_t> const_slopes){
+void place_convex_single_row(std::vector<int_t> const & widths, std::vector<std::pair<int_t, int_t> > const & ranges, std::vector<cell_bound> bounds, std::vector<int_t> const & const_slopes, std::vector<int_t> & positions){
     std::sort(bounds.begin(), bounds.end());
 
     full_single_row OSRP;
@@ -539,7 +539,23 @@ std::vector<int_t> place_convex_single_row(std::vector<int_t> widths, std::vecto
         }
     }
 
-    return OSRP.get_placement();
+    positions = OSRP.get_placement();
+}
+
+void place_noncvx_single_row(std::vector<int_t> const & widths, std::vector<std::pair<int_t, int_t> > const & ranges, std::vector<int> const & flippables, std::vector<cell_bound> bounds, std::vector<int_t> const & const_slopes, std::vector<int_t> & positions, std::vector<int> & flippings){
+    std::sort(bounds.begin(), bounds.end());
+
+    full_single_row OSRP;
+    for(index_t i=0, j=0; i<widths.size(); ++i){
+        OSRP.push_cell(widths[i], ranges[i].first, ranges[i].second);
+        OSRP.push_slope(const_slopes[i]);
+        for(; j<bounds.size() and bounds[j].c == i; ++j){
+            OSRP.push_bound(bounds[j].pos, bounds[j].slope);
+        }
+    }
+
+    positions = OSRP.get_placement();
+    flippings = std::vector<int>(positions.size(), 0);
 }
 
 } // Namespace coloquinte

@@ -142,6 +142,31 @@ struct Hnet_group{
         return cost;
     }
 
+    std::int64_t get_cost(std::vector<int_t> const & pos, std::vector<int> const & flip) const{
+        std::int64_t cost=0;
+        for(index_t n=0; n<nets.size(); ++n){
+            auto cur_net = nets[n];
+
+            minmax mm(std::numeric_limits<int_t>::max(), std::numeric_limits<int_t>::min());
+            if(cur_net.has_ext_pins){
+                mm = cur_net.ext_pins;
+            }
+
+            assert(net_limits[n+1] > net_limits[n]);
+            for(index_t p=net_limits[n]; p<net_limits[n+1]; ++p){
+                int_t cur_pos = pos[pins[p].cell_index];
+                bool flipped  = flip[pins[p].cell_index];
+                int_t wdth    = cell_widths[pins[p].cell_index];
+                mm.merge( flipped ? 
+                    minmax(cur_pos + wdth - pins[p].offset.min, cur_pos + wdth - pins[p].offset.max)
+                  : minmax(cur_pos + pins[p].offset.min, cur_pos + pins[p].offset.max)
+                );
+            }
+            cost += static_cast<std::int64_t>(cur_net.weight) * (mm.max - mm.min);
+        }
+        return cost;
+    }
+
 };
 
 Hnet_group get_B2B_netgroup(netlist const & circuit, detailed_placement const & pl, std::vector<index_t> const & cells){
@@ -263,7 +288,7 @@ inline std::int64_t optimize_convex_sequence(Hnet_group const & nets, std::vecto
         }
     }
 
-    positions = place_convex_single_row(loc_widths, loc_ranges, bounds, right_slopes);
+    place_convex_single_row(loc_widths, loc_ranges, bounds, right_slopes, positions);
 
     auto permuted_positions = positions;
     for(index_t i=0; i<permutation.size(); ++i){
@@ -273,8 +298,57 @@ inline std::int64_t optimize_convex_sequence(Hnet_group const & nets, std::vecto
 }
 
 // TODO: take modified order relative to the obstacles into account
-inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vector<index_t> const & permutation, std::vector<int_t> & positions, std::vector<int> & orientations, std::vector<int> const & flippability, std::vector<std::pair<int_t, int_t> > const & cell_ranges){
-     return -1;    
+inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vector<index_t> const & permutation, std::vector<int_t> & positions, std::vector<int> & flippings, std::vector<int> const & flippability, std::vector<std::pair<int_t, int_t> > const & cell_ranges){
+    // Get the widths of the cells in row order
+    std::vector<int_t> loc_widths(permutation.size());
+    std::vector<int> loc_flipps(permutation.size());
+    std::vector<std::pair<int_t, int_t> > loc_ranges(permutation.size());
+    for(index_t i=0; i<permutation.size(); ++i){
+         loc_widths[permutation[i]] = nets.cell_widths[i];
+         loc_ranges[permutation[i]] = cell_ranges[i];
+         loc_flipps[permutation[i]] = flippability[i];
+    }
+
+    std::vector<cell_bound> bounds;
+    std::vector<int_t> right_slopes(permutation.size(), 0);
+    for(index_t n=0; n<nets.nets.size(); ++n){
+        index_t fst_c=std::numeric_limits<index_t>::max(), lst_c=0;
+        int_t fst_pin_offs=0, lst_pin_offs=0;
+        assert(nets.net_limits[n+1] > nets.net_limits[n]);
+        auto cur_net = nets.nets[n];
+        for(index_t p=nets.net_limits[n]; p<nets.net_limits[n+1]; ++p){
+            // Permutation: index in the Hnet_group to index in the row
+            index_t cur_cell = permutation[nets.pins[p].cell_index];
+            if(cur_cell < fst_c){
+                fst_c = cur_cell;
+                fst_pin_offs = nets.pins[p].offset.min;
+            }
+            if(cur_cell >= lst_c){
+                lst_c = cur_cell;
+                lst_pin_offs = nets.pins[p].offset.max;
+            }
+        }
+        if(cur_net.has_ext_pins){
+            bounds.push_back(cell_bound(fst_c, cur_net.ext_pins.min - fst_pin_offs, cur_net.weight));
+            bounds.push_back(cell_bound(lst_c, cur_net.ext_pins.max - lst_pin_offs, cur_net.weight));
+
+            right_slopes[lst_c] += cur_net.weight;
+        }
+        else{
+            right_slopes[lst_c] += cur_net.weight;
+            right_slopes[fst_c] -= cur_net.weight;
+        }
+    }
+
+    place_noncvx_single_row(loc_widths, loc_ranges, loc_flipps, bounds, right_slopes, positions, flippings);
+
+    auto permuted_positions = positions;
+    auto permuted_flippings = flippings;
+    for(index_t i=0; i<permutation.size(); ++i){
+        permuted_positions[i] = positions[permutation[i]];
+        permuted_flippings[i] = flippings[permutation[i]];
+    }
+    return nets.get_cost(permuted_positions, permuted_flippings);
 }
 
 void OSRP_generic(netlist const & circuit, detailed_placement & pl, bool non_convex, bool RSMT){
@@ -384,8 +458,9 @@ void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t
 
                 std::int64_t best_cost = std::numeric_limits<std::int64_t>::max();
                 std::vector<int_t> positions(cells.size());
-                std::vector<int> orientations(cells.size());
+                std::vector<int>   flippings(cells.size());
                 std::vector<int_t> best_positions(cells.size());
+                std::vector<int>   best_flippings(cells.size());
 
                 std::vector<index_t> permutation(cells.size());
                 for(index_t i=0; i<cells.size(); ++i) permutation[i] = i;
@@ -394,11 +469,12 @@ void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t
                 // Check every possible permutation of the cells
                 do{
                     std::int64_t cur_cost = non_convex ?
-                        optimize_noncvx_sequence(nets, permutation, positions, orientations, flippables, lims) :
+                        optimize_noncvx_sequence(nets, permutation, positions, flippings, flippables, lims) :
                         optimize_convex_sequence(nets, permutation, positions, lims);
                     if(cur_cost <= best_cost){
                         best_cost = cur_cost;
                         best_permutation = permutation;
+                        best_flippings = flippings;
                         best_positions = positions;
                     }
                 }while(std::next_permutation(permutation.begin(), permutation.end()));
@@ -409,6 +485,8 @@ void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t
                 for(index_t i=0; i<cells.size(); ++i){
                     index_t r_ind = best_permutation[i]; // In the row from in the Hnet_group
                     pl.plt_.positions_[cells[i]].x_ = best_positions[r_ind];
+                    if(non_convex)
+                        pl.plt_.orientations_[cells[i]].x_ ^= static_cast<bool>(best_flippings[r_ind]);
                     new_cell_order[r_ind] = cells[i];
                 }
 

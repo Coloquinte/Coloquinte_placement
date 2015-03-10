@@ -75,8 +75,8 @@ struct cell_bound{
     cell_bound(index_t order, int_t p, int_t s) : c(order), pos(p), slope(s) {}
 };
 
-std::vector<int_t> place_convex_single_row(std::vector<int_t> widths, std::vector<std::pair<int_t, int_t> > ranges, std::vector<cell_bound> bounds, std::vector<int_t> const_slopes);
-std::vector<int_t> place_noncvx_single_row(std::vector<int_t> widths, std::vector<std::pair<int_t, int_t> > ranges, std::vector<int> flippables, std::vector<cell_bound> bounds);
+void place_convex_single_row(std::vector<int_t> const & widths, std::vector<std::pair<int_t, int_t> > const & ranges, std::vector<cell_bound> bounds, std::vector<int_t> const & const_slopes, std::vector<int_t> & positions);
+void place_noncvx_single_row(std::vector<int_t> const & widths, std::vector<std::pair<int_t, int_t> > const & ranges, std::vector<int> const & flippables, std::vector<cell_bound> bounds, std::vector<int_t> const & const_slopes, std::vector<int_t> & positions, std::vector<int> & flippings);
 
 template<typename T>
 inline T OSRP_leg<T>::get_displacement(legalizable_task<T> const newly_pushed, bool update){
