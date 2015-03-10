@@ -318,8 +318,13 @@ void OSRP_generic(netlist const & circuit, detailed_placement & pl, bool non_con
         }
 
         if(not cells.empty()){
-            int_t lower_lim = pl.get_limit_positions(circuit, cells.front()).first,
-                  upper_lim = pl.get_limit_positions(circuit, cells.back()).second;
+            // Extreme limits, except macros are allowed to be beyond the limit of the placement area
+            int_t lower_lim = (circuit.get_cell(cells.front()).attributes & XMovable) != 0 ?
+                pl.get_limit_positions(circuit, cells.front()).first
+              : std::numeric_limits<int_t>::min();
+            int_t upper_lim = (circuit.get_cell(cells.back() ).attributes & XMovable) != 0 ?
+                pl.get_limit_positions(circuit, cells.back()).second
+              : std::numeric_limits<int_t>::max();
 
             for(auto & L : lims){
                 L.first  = std::max(lower_lim, L.first);
