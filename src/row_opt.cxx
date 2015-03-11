@@ -288,13 +288,16 @@ inline std::int64_t optimize_convex_sequence(Hnet_group const & nets, std::vecto
         }
     }
 
-    place_convex_single_row(loc_widths, loc_ranges, bounds, right_slopes, positions);
+    bool feasible = place_convex_single_row(loc_widths, loc_ranges, bounds, right_slopes, positions);
 
     auto permuted_positions = positions;
     for(index_t i=0; i<permutation.size(); ++i){
         permuted_positions[i] = positions[permutation[i]];
     }
-    return nets.get_cost(permuted_positions);
+    if(feasible)
+        return nets.get_cost(permuted_positions);
+    else
+        return std::numeric_limits<std::int64_t>::max(); // Infeasible: return a very big cost
 }
 
 // TODO: take modified order relative to the obstacles into account
@@ -340,7 +343,7 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
         }
     }
 
-    place_noncvx_single_row(loc_widths, loc_ranges, loc_flipps, bounds, right_slopes, positions, flippings);
+    bool feasible = place_noncvx_single_row(loc_widths, loc_ranges, loc_flipps, bounds, right_slopes, positions, flippings);
 
     auto permuted_positions = positions;
     auto permuted_flippings = flippings;
@@ -348,7 +351,10 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
         permuted_positions[i] = positions[permutation[i]];
         permuted_flippings[i] = flippings[permutation[i]];
     }
-    return nets.get_cost(permuted_positions, permuted_flippings);
+    if(feasible)
+        return nets.get_cost(permuted_positions, permuted_flippings);
+    else
+        return std::numeric_limits<std::int64_t>::max(); // Infeasible: return a very big cost
 }
 
 void OSRP_generic(netlist const & circuit, detailed_placement & pl, bool non_convex, bool RSMT){

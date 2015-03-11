@@ -447,7 +447,7 @@ std::vector<std::vector<capacity_t> > transport_generic(std::vector<capacity_t> 
     return transporter.get_allocations();
 }
 
-void place_convex_single_row(std::vector<int_t> const & widths, std::vector<std::pair<int_t, int_t> > const & ranges, std::vector<cell_bound> bounds, std::vector<int_t> const & const_slopes, std::vector<int_t> & positions){
+bool place_convex_single_row(std::vector<int_t> const & widths, std::vector<std::pair<int_t, int_t> > const & ranges, std::vector<cell_bound> bounds, std::vector<int_t> const & const_slopes, std::vector<int_t> & positions){
     std::sort(bounds.begin(), bounds.end());
 
     struct bound{
@@ -478,7 +478,7 @@ void place_convex_single_row(std::vector<int_t> const & widths, std::vector<std:
 
         int_t cur_pos = upper_lim;
         if(upper_lim < lower_lim){ // Infeasible
-            throw std::runtime_error("Infeasible single row problem\n");
+            return false;
         }
         int_t cur_slope = const_slopes[i];
 
@@ -499,13 +499,12 @@ void place_convex_single_row(std::vector<int_t> const & widths, std::vector<std:
     for(index_t i=0; i<positions.size(); ++i){
         positions[i] += prev_widths[i];
     }
+    return true;
 }
 
-void place_noncvx_single_row(std::vector<int_t> const & widths, std::vector<std::pair<int_t, int_t> > const & ranges, std::vector<int> const & flippables, std::vector<cell_bound> bounds, std::vector<int_t> const & const_slopes, std::vector<int_t> & positions, std::vector<int> & flippings){
-
-    place_convex_single_row(widths, ranges, bounds, const_slopes, positions);
-
+bool place_noncvx_single_row(std::vector<int_t> const & widths, std::vector<std::pair<int_t, int_t> > const & ranges, std::vector<int> const & flippables, std::vector<cell_bound> bounds, std::vector<int_t> const & const_slopes, std::vector<int_t> & positions, std::vector<int> & flippings){
     flippings = std::vector<int>(positions.size(), 0);
+    return place_convex_single_row(widths, ranges, bounds, const_slopes, positions);
 }
 
 } // Namespace coloquinte
