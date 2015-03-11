@@ -368,15 +368,15 @@ void OSRP_generic(netlist const & circuit, detailed_placement & pl, bool non_con
         // Get the movable cells, if we can flip them, and the obstacles on the row
         for(index_t OSRP_cell = pl.get_first_cell_on_row(r); OSRP_cell != null_ind; OSRP_cell = pl.get_next_cell_on_row(OSRP_cell, r)){
             auto attr = circuit.get_cell(OSRP_cell).attributes;
-            if( (attr & XMovable) != 0 and pl.cell_height(OSRP_cell) == 1){
-                cells.push_back(OSRP_cell);
-                flippability.push_back( (attr & XFlippable) != 0);
-                lims.push_back(std::pair<int_t, int_t>(std::numeric_limits<int_t>::min(), std::numeric_limits<int_t>::max()));
-            }
-            else{
+            cells.push_back(OSRP_cell);
+            flippability.push_back( (attr & XFlippable) != 0);
+
+            auto cur_lim = std::pair<int_t, int_t>(std::numeric_limits<int_t>::min(), std::numeric_limits<int_t>::max());
+            if( (attr & XMovable) == 0 or pl.cell_height(OSRP_cell) != 1){
                 int_t pos = pl.plt_.positions_[OSRP_cell].x_;
-                lims.push_back(std::pair<int_t, int_t>(pos, pos + circuit.get_cell(OSRP_cell).size.x_));
+                cur_lim = std::pair<int_t, int_t>(pos, pos + circuit.get_cell(OSRP_cell).size.x_);
             }
+            lims.push_back(cur_lim);
         }
 
         if(not cells.empty()){
@@ -437,12 +437,14 @@ void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t
 
             for(index_t nbr_cells=0;
                     OSRP_cell != null_ind
-                and pl.cell_height(OSRP_cell) == 1
-                and (circuit.get_cell(OSRP_cell).attributes & XMovable) != 0
                 and nbr_cells < range;
                 OSRP_cell = pl.neighbours_[pl.neighbours_limits_[OSRP_cell]].second, ++nbr_cells
             ){
                 std::pair<int_t, int_t> cur_lim(std::numeric_limits<int_t>::min(), std::numeric_limits<int_t>::max());
+                if(pl.cell_height(OSRP_cell) != 1 or (circuit.get_cell(OSRP_cell).attributes & XMovable) == 0){
+                    int_t pos = pl.plt_.positions_[OSRP_cell].x_;
+                    cur_lim = std::pair<int_t, int_t>(pos, pos + circuit.get_cell(OSRP_cell).size.x_);
+                }
                 cells.push_back(OSRP_cell);
                 flippables.push_back( (circuit.get_cell(OSRP_cell).attributes & XFlippable) != 0);
                 lims.push_back(cur_lim);
@@ -501,14 +503,8 @@ void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t
            }
     
             if(OSRP_cell != null_ind){
-                // We are on a non-movable cell
-                if( (circuit.get_cell(OSRP_cell).attributes & XMovable) == 0 or pl.cell_height(OSRP_cell) != 1){
-                    OSRP_cell = pl.get_next_standard_cell_on_row(OSRP_cell, r); // Go to the next group
-                }
-                else{ // We optimized with the maximum number of cells: just advance a few cells and optimize again
-                    assert(cells.size() == range);
-                    OSRP_cell = cells[range/2];
-                }
+                assert(cells.size() == range);
+                OSRP_cell = cells[range/2];
             }
         } // Iteration on the entire row
     } // Iteration on the rows
