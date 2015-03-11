@@ -351,13 +351,15 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
         permuted_positions[i] = positions[permutation[i]];
         permuted_flippings[i] = flippings[permutation[i]];
     }
+
     if(feasible)
         return nets.get_cost(permuted_positions, permuted_flippings);
     else
         return std::numeric_limits<std::int64_t>::max(); // Infeasible: return a very big cost
 }
 
-void OSRP_generic(netlist const & circuit, detailed_placement & pl, bool non_convex, bool RSMT){
+template<bool NON_CONVEX, bool RSMT>
+void OSRP_generic(netlist const & circuit, detailed_placement & pl){
     for(index_t r=0; r<pl.row_cnt(); ++r){
         // Complete optimization on a row, comprising possible obstacles
 
@@ -402,7 +404,7 @@ void OSRP_generic(netlist const & circuit, detailed_placement & pl, bool non_con
 
             std::vector<int_t> final_positions;
 
-            if(non_convex){
+            if(NON_CONVEX){
                 std::vector<int> flipped;
                 optimize_noncvx_sequence(nets, no_permutation, final_positions, flipped, flippability, lims);
                 for(index_t i=0; i<cells.size(); ++i){
@@ -424,7 +426,8 @@ void OSRP_generic(netlist const & circuit, detailed_placement & pl, bool non_con
     pl.selfcheck();
 }
 
-void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t range, bool non_convex, bool RSMT){
+template<bool NON_CONVEX, bool RSMT>
+void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t range){
     assert(range >= 2);
 
     for(index_t r=0; r<pl.row_cnt(); ++r){
@@ -476,7 +479,7 @@ void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t
 
                 // Check every possible permutation of the cells
                 do{
-                    std::int64_t cur_cost = non_convex ?
+                    std::int64_t cur_cost = NON_CONVEX ?
                         optimize_noncvx_sequence(nets, permutation, positions, flippings, flippables, lims) :
                         optimize_convex_sequence(nets, permutation, positions, lims);
                     if(cur_cost <= best_cost){
@@ -493,7 +496,7 @@ void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t
                 for(index_t i=0; i<cells.size(); ++i){
                     index_t r_ind = best_permutation[i]; // In the row from in the Hnet_group
                     pl.plt_.positions_[cells[i]].x_ = best_positions[r_ind];
-                    if(non_convex)
+                    if(NON_CONVEX)
                         pl.plt_.orientations_[cells[i]].x_ ^= static_cast<bool>(best_flippings[r_ind]);
                     new_cell_order[r_ind] = cells[i];
                 }
@@ -513,14 +516,14 @@ void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t
 }
 } // End anonymous namespace
 
-void OSRP_convex_HPWL(netlist const & circuit, detailed_placement & pl){ OSRP_generic(circuit, pl, false, false); }
-void OSRP_convex_RSMT(netlist const & circuit, detailed_placement & pl){ OSRP_generic(circuit, pl, false, true); }
-void OSRP_noncvx_HPWL(netlist const & circuit, detailed_placement & pl){ OSRP_generic(circuit, pl, true, false); }
-void OSRP_noncvx_RSMT(netlist const & circuit, detailed_placement & pl){ OSRP_generic(circuit, pl, true, true); }
-void swaps_row_convex_HPWL(netlist const & circuit, detailed_placement & pl, index_t range){ swaps_row_generic(circuit, pl, range, false, false); }
-void swaps_row_convex_RSMT(netlist const & circuit, detailed_placement & pl, index_t range){ swaps_row_generic(circuit, pl, range, false, true); }
-void swaps_row_noncvx_HPWL(netlist const & circuit, detailed_placement & pl, index_t range){ swaps_row_generic(circuit, pl, range, true, false); }
-void swaps_row_noncvx_RSMT(netlist const & circuit, detailed_placement & pl, index_t range){ swaps_row_generic(circuit, pl, range, true, true); }
+void OSRP_convex_HPWL(netlist const & circuit, detailed_placement & pl){ OSRP_generic< false, false>(circuit, pl); }
+void OSRP_convex_RSMT(netlist const & circuit, detailed_placement & pl){ OSRP_generic< false, true >(circuit, pl); }
+void OSRP_noncvx_HPWL(netlist const & circuit, detailed_placement & pl){ OSRP_generic< true , false>(circuit, pl); }
+void OSRP_noncvx_RSMT(netlist const & circuit, detailed_placement & pl){ OSRP_generic< true , true >(circuit, pl); }
+void swaps_row_convex_HPWL(netlist const & circuit, detailed_placement & pl, index_t range){ swaps_row_generic< false, false>(circuit, pl, range); }
+void swaps_row_convex_RSMT(netlist const & circuit, detailed_placement & pl, index_t range){ swaps_row_generic< false, true >(circuit, pl, range); }
+void swaps_row_noncvx_HPWL(netlist const & circuit, detailed_placement & pl, index_t range){ swaps_row_generic< true , false>(circuit, pl, range); }
+void swaps_row_noncvx_RSMT(netlist const & circuit, detailed_placement & pl, index_t range){ swaps_row_generic< true , true >(circuit, pl, range); }
 
 } // namespace dp
 } // namespace coloquinte
