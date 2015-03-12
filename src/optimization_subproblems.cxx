@@ -469,18 +469,18 @@ bool place_convex_single_row(std::vector<int_t> const & widths, std::vector<std:
         int_t old_width = prev_widths[i];
         int_t new_width = prev_widths[i+1];
 
-        lower_lim = std::max(ranges[i].first, lower_lim - old_width);
+        lower_lim = std::max(ranges[i].first - old_width, lower_lim);
         int_t upper_lim = ranges[i].second - new_width;
 
         for(; j<bounds.size() and bounds[j].c == i; ++j){
             prio_queue.push(bound(bounds[j].pos - old_width, bounds[j].slope));
         }
 
-        int_t cur_pos = upper_lim;
         if(upper_lim < lower_lim){ // Infeasible
             return false;
         }
         int_t cur_slope = const_slopes[i];
+        int_t cur_pos = upper_lim;
 
         while(not prio_queue.empty() and (cur_slope > 0 or prio_queue.top().abs_pos > upper_lim)){
             cur_slope -= prio_queue.top().slope_diff;
