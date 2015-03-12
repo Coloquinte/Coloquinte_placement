@@ -168,6 +168,9 @@ index_t detailed_placement::get_first_standard_cell_on_row(index_t r){
 index_t detailed_placement::get_next_cell_on_row(index_t c, index_t r){
     return neighbours_[neighbour_index(c, r)].second;
 }
+index_t detailed_placement::get_prev_cell_on_row(index_t c, index_t r){
+    return neighbours_[neighbour_index(c, r)].first;
+}
 
 index_t detailed_placement::get_next_standard_cell_on_row(index_t c, index_t r){
     do{
@@ -177,6 +180,35 @@ index_t detailed_placement::get_next_standard_cell_on_row(index_t c, index_t r){
     }while(c != null_ind and cell_height(c) != 1);
     assert(c == null_ind or cell_rows_[c] == r);
     return c;
+}
+
+void detailed_placement::reorder_cells(std::vector<index_t> const old_order, std::vector<index_t> const new_order, index_t r){
+    assert(old_order.size() == new_order.size());
+    assert(not old_order.empty());
+
+    index_t before_row = get_prev_cell_on_row(old_order.front(), r);
+    index_t after_row  = get_next_cell_on_row(old_order.back(),  r);
+
+    for(index_t i=0; i<new_order.size(); ++i){
+        auto & nghs = neighbours_[neighbour_index(new_order[i], r)];
+        if(i > 0){
+            nghs.first = new_order[i-1];
+        }
+        else{
+            nghs.first = before_row;
+        }
+        if(i+1 < new_order.size()){
+            nghs.second = new_order[i+1];
+        }
+        else{
+            nghs.second = after_row;
+        }
+    }
+
+    if(before_row != null_ind) neighbours_[neighbour_index(before_row, r)].second = new_order.front();
+    else row_first_cells_[r] = new_order.front();
+    if(after_row != null_ind) neighbours_[neighbour_index(after_row, r)].first = new_order.back();
+    else row_last_cells_[r] = new_order.back(); 
 }
 
 void detailed_placement::reorder_standard_cells(std::vector<index_t> const old_order, std::vector<index_t> const new_order){

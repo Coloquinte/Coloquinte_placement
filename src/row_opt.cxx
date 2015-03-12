@@ -501,7 +501,7 @@ void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t
                     new_cell_order[r_ind] = cells[i];
                 }
 
-                pl.reorder_standard_cells(cells, new_cell_order);
+                pl.reorder_cells(cells, new_cell_order, r);
                 cells = new_cell_order;
            }
     
