@@ -116,8 +116,8 @@ std::function<std::int64_t(netlist const &, detailed_placement const &, std::vec
 
         for(index_t other_row = main_row+1; other_row <= std::min(pl.row_cnt()-1, main_row+row_extent) ; ++other_row){
 
-            index_t first_oc = pl.get_first_cell_on_row(other_row); // The first candidate cell to be examined
-            for(index_t c = pl.get_first_cell_on_row(main_row); c != null_ind; c = pl.get_next_cell_on_row(c, main_row)){
+            index_t first_oc = pl.get_first_standard_cell_on_row(other_row); // The first candidate cell to be examined
+            for(index_t c = pl.get_first_standard_cell_on_row(main_row); c != null_ind; c = pl.get_next_standard_cell_on_row(c, main_row)){
                 assert(pl.cell_rows_[c] == main_row);
                 if( (circuit.get_cell(c).attributes & XMovable) == 0) continue; // Don't touch fixed cells
 
@@ -126,7 +126,7 @@ std::function<std::int64_t(netlist const &, detailed_placement const &, std::vec
                 index_t nb_before = 0;
                 int_t pos_low = pl.plt_.positions_[c].x_ -   circuit.get_cell(c).size.x_,
                       pos_hgh = pl.plt_.positions_[c].x_ + 2*circuit.get_cell(c).size.x_;
-                for(index_t oc=first_oc; oc != null_ind and nb_after <= row_extent; oc = pl.get_next_cell_on_row(oc, other_row)){
+                for(index_t oc=first_oc; oc != null_ind and nb_after <= row_extent; oc = pl.get_next_standard_cell_on_row(oc, other_row)){
                     assert(pl.cell_rows_[oc] == other_row);
                     if( (circuit.get_cell(oc).attributes & XMovable) == 0) continue; // Don't touche fixed cells
 
@@ -141,7 +141,7 @@ std::function<std::int64_t(netlist const &, detailed_placement const &, std::vec
                 }
                 while(nb_before > cell_extent){
                     nb_before--;
-                    first_oc = pl.get_next_cell_on_row(first_oc, other_row);
+                    first_oc = pl.get_next_standard_cell_on_row(first_oc, other_row);
                 }
             }
         }
