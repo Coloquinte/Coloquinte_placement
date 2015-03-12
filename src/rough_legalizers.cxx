@@ -519,12 +519,13 @@ void region_distribution::redo_bipartitions(){
 }
 
 void region_distribution::redo_diagonal_bipartitions(){
+    // Take four cells at a time and optimize them
     auto const optimize_quad_diag = [&](index_t x, index_t y){
         region::redistribute_cells(get_region(x, y), get_region(x+1, y+1));
         region::redistribute_cells(get_region(x+1, y), get_region(x, y+1));
     };
 
-    // x is the fast index
+    // x is the fast index: the innermost loop operates on it
     auto const optimize_diag_on_y = [&](index_t y){
         for(index_t x=0; x+1 < x_regions_cnt(); x+=2){
             if(x+2 < x_regions_cnt()){
@@ -536,13 +537,15 @@ void region_distribution::redo_diagonal_bipartitions(){
         }
     };
 
-    // Take four cells at a time and optimize them
-    for(index_t y=0; y+1 < y_regions_cnt(); y+=2){
-        if(y+2 < y_regions_cnt()){
-            // y odd
-            optimize_diag_on_y(y+1);
-        }
+    // OpenMP doesn't allow y+1 < y_regions_cnt(), but anyway y_regions_cnt() >= 1
+    #pragma omp parallel for
+    for(index_t y=0; y < y_regions_cnt()-1; y+=2){
         // y even
+        optimize_diag_on_y(y);
+    }
+    #pragma omp parallel for
+    for(index_t y=1; y < y_regions_cnt()-1; y+=2){
+        // y odd
         optimize_diag_on_y(y);
     }
 }
@@ -556,6 +559,7 @@ void region_distribution::redo_adjacent_bipartitions(){
     };
 
     // x bipartitions
+    #pragma omp parallel for
     for(index_t y=0; y < y_regions_cnt(); ++y){
         for(index_t x=0; x+1 < x_regions_cnt(); x+=2){
             if(x+2 < x_regions_cnt()){
@@ -567,6 +571,7 @@ void region_distribution::redo_adjacent_bipartitions(){
         }
     }
     // y bipartitions
+    #pragma omp parallel for
     for(index_t x=0; x < x_regions_cnt(); ++x){
         for(index_t y=0; y+1 < y_regions_cnt(); y+=2){
             if(y+2 < y_regions_cnt()){
@@ -692,6 +697,7 @@ inline void region_distribution::region::redistribute_cells(std::vector<std::ref
 
 void region_distribution::redo_line_partitions(){
     // Optimize a single line or column
+    #pragma omp parallel for
     for(index_t y=0; y<y_regions_cnt(); ++y){
         std::vector<std::reference_wrapper<region> > regs;
         for(index_t x=0; x<x_regions_cnt(); ++x){
@@ -699,6 +705,7 @@ void region_distribution::redo_line_partitions(){
         }
         region::redistribute_cells(regs, [](point<float_t> p){ return p.x_; });
     }
+    #pragma omp parallel for
     for(index_t x=0; x<x_regions_cnt(); ++x){
         std::vector<std::reference_wrapper<region> > regs;
         for(index_t y=0; y<y_regions_cnt(); ++y){
@@ -717,6 +724,7 @@ void region_distribution::x_resize(index_t sz){
 
     x_regions_cnt_ = sz;
 
+    #pragma omp parallel for
     for(index_t y=0; y<y_regions_cnt(); ++y){
         std::vector<cell_ref> cells;
         for(index_t x=0; x<old_x_regions_cnt; ++x){
@@ -741,6 +749,7 @@ void region_distribution::y_resize(index_t sz){
 
     y_regions_cnt_ = sz;
 
+    #pragma omp parallel for
     for(index_t x=0; x<x_regions_cnt(); ++x){
         std::vector<cell_ref> cells;
         for(index_t y=0; y<old_y_regions_cnt; ++y){
