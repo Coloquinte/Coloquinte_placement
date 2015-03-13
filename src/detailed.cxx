@@ -135,7 +135,7 @@ void detailed_placement::swap_standard_cell_topologies(index_t c1, index_t c2){
     std::swap(cell_rows_[c1], cell_rows_[c2]);
 }
 
-std::pair<int_t, int_t> detailed_placement::get_limit_positions(netlist const & circuit, index_t c){
+std::pair<int_t, int_t> detailed_placement::get_limit_positions(netlist const & circuit, index_t c) const{
     auto ret = std::pair<int_t, int_t>(min_x_, max_x_);
     for(index_t l=neighbours_limits_[c]; l<neighbours_limits_[c+1]; ++l){
         index_t b_i = neighbours_[l].first,

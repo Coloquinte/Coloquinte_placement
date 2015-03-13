@@ -53,7 +53,7 @@ struct detailed_placement{
     }
 
     void swap_standard_cell_topologies(index_t c1, index_t c2);
-    std::pair<int_t, int_t> get_limit_positions(netlist const & circuit, index_t c);
+    std::pair<int_t, int_t> get_limit_positions(netlist const & circuit, index_t c) const;
 
     index_t get_first_cell_on_row(index_t r);
     index_t get_next_cell_on_row(index_t c, index_t r);
