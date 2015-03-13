@@ -210,7 +210,6 @@ Hnet_group get_RSMT_netgroup(netlist const & circuit, detailed_placement const &
             auto it = std::lower_bound(cells_in_row.begin(), cells_in_row.end(), p.cell_ind);
             if(it != cells_in_row.end() and it->cell_ind == p.cell_ind){
                 p.cell_ind = it->seq_order;
-                assert(p.movable); // If it is in the given cells, it should be movable
             }
             else{
                 p.movable = false;
@@ -342,7 +341,6 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
             right_slopes[fst_c] -= cur_net.weight;
         }
     }
-
     bool feasible = place_noncvx_single_row(loc_widths, loc_ranges, loc_flipps, bounds, right_slopes, positions, flippings);
 
     auto permuted_positions = positions;
@@ -358,6 +356,33 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
         return std::numeric_limits<std::int64_t>::max(); // Infeasible: return a very big cost
 }
 
+std::vector<std::pair<int_t, int_t> > get_cell_ranges(netlist const & circuit, detailed_placement const & pl, std::vector<index_t> const & cells){
+    std::vector<std::pair<int_t, int_t> > lims;
+
+    // Extreme limits, except macros are allowed to be beyond the limit of the placement area
+    int_t lower_lim = pl.get_limit_positions(circuit, cells.front()).first;
+    int_t upper_lim = pl.get_limit_positions(circuit, cells.back()).second;
+
+    for(index_t OSRP_cell : cells){
+        auto attr = circuit.get_cell(OSRP_cell).attributes;
+        auto cur_lim = std::pair<int_t, int_t>(lower_lim, upper_lim);
+        int_t pos = pl.plt_.positions_[OSRP_cell].x_;
+        if( (attr & XMovable) == 0 or pl.cell_height(OSRP_cell) != 1){
+            cur_lim = std::pair<int_t, int_t>(pos, pos + circuit.get_cell(OSRP_cell).size.x_);
+        }
+	    else{
+            assert(pos >= lower_lim);
+            assert(pos + circuit.get_cell(OSRP_cell).size.x_ <= upper_lim);
+        }
+        lims.push_back(cur_lim);
+    }
+    for(index_t i=0; i+1<cells.size(); ++i){
+        assert(pl.plt_.positions_[cells[i]].x_ + circuit.get_cell(cells[i]).size.x_ <= pl.plt_.positions_[cells[i+1]].x_);
+    }
+
+    return lims;
+}
+
 template<bool NON_CONVEX, bool RSMT>
 void OSRP_generic(netlist const & circuit, detailed_placement & pl){
     for(index_t r=0; r<pl.row_cnt(); ++r){
@@ -365,35 +390,16 @@ void OSRP_generic(netlist const & circuit, detailed_placement & pl){
 
         std::vector<index_t> cells;
         std::vector<int> flippability;
-        std::vector<std::pair<int_t, int_t> > lims; // Limit positions for each cell
 
         // Get the movable cells, if we can flip them, and the obstacles on the row
         for(index_t OSRP_cell = pl.get_first_cell_on_row(r); OSRP_cell != null_ind; OSRP_cell = pl.get_next_cell_on_row(OSRP_cell, r)){
             auto attr = circuit.get_cell(OSRP_cell).attributes;
             cells.push_back(OSRP_cell);
             flippability.push_back( (attr & XFlippable) != 0);
-
-            auto cur_lim = std::pair<int_t, int_t>(std::numeric_limits<int_t>::min(), std::numeric_limits<int_t>::max());
-            if( (attr & XMovable) == 0 or pl.cell_height(OSRP_cell) != 1){
-                int_t pos = pl.plt_.positions_[OSRP_cell].x_;
-                cur_lim = std::pair<int_t, int_t>(pos, pos + circuit.get_cell(OSRP_cell).size.x_);
-            }
-            lims.push_back(cur_lim);
         }
 
         if(not cells.empty()){
-            // Extreme limits, except macros are allowed to be beyond the limit of the placement area
-            int_t lower_lim = (circuit.get_cell(cells.front()).attributes & XMovable) != 0 ?
-                pl.get_limit_positions(circuit, cells.front()).first
-              : std::numeric_limits<int_t>::min();
-            int_t upper_lim = (circuit.get_cell(cells.back() ).attributes & XMovable) != 0 ?
-                pl.get_limit_positions(circuit, cells.back()).second
-              : std::numeric_limits<int_t>::max();
-
-            for(auto & L : lims){
-                L.first  = std::max(lower_lim, L.first);
-                L.second = std::min(upper_lim, L.second);
-            }
+            std::vector<std::pair<int_t, int_t> > lims = get_cell_ranges(circuit, pl, cells); // Limit positions for each cell
 
             Hnet_group nets = RSMT ?
                 get_RSMT_netgroup(circuit, pl, cells)
@@ -403,7 +409,6 @@ void OSRP_generic(netlist const & circuit, detailed_placement & pl){
             for(index_t i=0; i<cells.size(); ++i) no_permutation[i] = i;
 
             std::vector<int_t> final_positions;
-
             if(NON_CONVEX){
                 std::vector<int> flipped;
                 optimize_noncvx_sequence(nets, no_permutation, final_positions, flipped, flippability, lims);
@@ -441,27 +446,14 @@ void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t
             for(index_t nbr_cells=0;
                     OSRP_cell != null_ind
                 and nbr_cells < range;
-                OSRP_cell = pl.neighbours_[pl.neighbours_limits_[OSRP_cell]].second, ++nbr_cells
+                OSRP_cell = pl.get_next_cell_on_row(OSRP_cell, r), ++nbr_cells
             ){
-                std::pair<int_t, int_t> cur_lim(std::numeric_limits<int_t>::min(), std::numeric_limits<int_t>::max());
-                if(pl.cell_height(OSRP_cell) != 1 or (circuit.get_cell(OSRP_cell).attributes & XMovable) == 0){
-                    int_t pos = pl.plt_.positions_[OSRP_cell].x_;
-                    cur_lim = std::pair<int_t, int_t>(pos, pos + circuit.get_cell(OSRP_cell).size.x_);
-                }
                 cells.push_back(OSRP_cell);
                 flippables.push_back( (circuit.get_cell(OSRP_cell).attributes & XFlippable) != 0);
-                lims.push_back(cur_lim);
             }
 
             if(not cells.empty()){
-                // Limits of the placement region for the cells taken
-                int_t lower_lim = pl.get_limit_positions(circuit, cells.front()).first,
-                      upper_lim = pl.get_limit_positions(circuit, cells.back()).second;
-
-                for(auto & L : lims){
-                    L.first  = std::max(lower_lim, L.first);
-                    L.second = std::min(upper_lim, L.second);
-                }
+                std::vector<std::pair<int_t, int_t> > lims = get_cell_ranges(circuit, pl, cells); // Limit positions for each cell
 
                 Hnet_group nets = RSMT ?
                     get_RSMT_netgroup(circuit, pl, cells)
@@ -489,20 +481,22 @@ void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t
                         best_positions = positions;
                     }
                 }while(std::next_permutation(permutation.begin(), permutation.end()));
-                assert(best_cost < std::numeric_limits<std::int64_t>::max());
 
                 std::vector<index_t> new_cell_order(cells.size());
                 // Update the positions and the topology
                 for(index_t i=0; i<cells.size(); ++i){
                     index_t r_ind = best_permutation[i]; // In the row from in the Hnet_group
-                    pl.plt_.positions_[cells[i]].x_ = best_positions[r_ind];
-                    if(NON_CONVEX)
-                        pl.plt_.orientations_[cells[i]].x_ ^= static_cast<bool>(best_flippings[r_ind]);
                     new_cell_order[r_ind] = cells[i];
+                    pl.plt_.positions_[cells[i]].x_ = best_positions[r_ind];
+                    if(NON_CONVEX){
+                        pl.plt_.orientations_[cells[i]].x_ ^= static_cast<bool>(best_flippings[r_ind]);
+                    }
                 }
 
                 pl.reorder_cells(cells, new_cell_order, r);
                 cells = new_cell_order;
+
+                assert(best_cost < std::numeric_limits<std::int64_t>::max());
            }
     
             if(OSRP_cell != null_ind){
