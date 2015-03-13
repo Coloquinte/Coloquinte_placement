@@ -6,6 +6,8 @@
 
 #include <cassert>
 
+#include <iostream>
+
 namespace coloquinte{
 namespace dp{
 
@@ -257,6 +259,7 @@ inline std::int64_t optimize_convex_sequence(Hnet_group const & nets, std::vecto
          loc_ranges[permutation[i]] = cell_ranges[i];
     }
 
+    std::cout << "Creating bounds" << std::endl;
     std::vector<cell_bound> bounds;
     std::vector<int_t> right_slopes(permutation.size(), 0);
     for(index_t n=0; n<nets.nets.size(); ++n){
@@ -288,7 +291,9 @@ inline std::int64_t optimize_convex_sequence(Hnet_group const & nets, std::vecto
         }
     }
 
+    std::cout << "OSRP solving" << std::endl;
     bool feasible = place_convex_single_row(loc_widths, loc_ranges, bounds, right_slopes, positions);
+    std::cout << "Done with " << feasible << std::endl;
 
     auto permuted_positions = positions;
     for(index_t i=0; i<permutation.size(); ++i){
@@ -342,7 +347,6 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
             right_slopes[fst_c] -= cur_net.weight;
         }
     }
-
     bool feasible = place_noncvx_single_row(loc_widths, loc_ranges, loc_flipps, bounds, right_slopes, positions, flippings);
 
     auto permuted_positions = positions;
@@ -356,6 +360,10 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
         return nets.get_cost(permuted_positions, permuted_flippings);
     else
         return std::numeric_limits<std::int64_t>::max(); // Infeasible: return a very big cost
+}
+
+std::vector<std::pair<int_t, int_t> > get_cell_ranges(netlist const & circuit, detailed_placement const & pl, std::vector<index_t> const & cells){
+
 }
 
 template<bool NON_CONVEX, bool RSMT>
@@ -390,9 +398,17 @@ void OSRP_generic(netlist const & circuit, detailed_placement & pl){
                 pl.get_limit_positions(circuit, cells.back()).second
               : std::numeric_limits<int_t>::max();
 
-            for(auto & L : lims){
-                L.first  = std::max(lower_lim, L.first);
-                L.second = std::min(upper_lim, L.second);
+            if(lower_lim == std::numeric_limits<int_t>::min()) std::cout << "Shit l" << std::endl;
+            if(upper_lim == std::numeric_limits<int_t>::max()) std::cout << "Shit u" << std::endl;
+            for(index_t i=0; i<lims.size(); ++i){
+		auto & L = lims[i];
+                lower_lim = std::max(lower_lim, L.first);
+                L.first  = lower_lim;
+            }
+            for(index_t i=lims.size(); i>0; --i){
+		auto & L = lims[i-1];
+                upper_lim = std::min(upper_lim, L.second);
+                L.second  = upper_lim;
             }
 
             Hnet_group nets = RSMT ?
@@ -403,7 +419,7 @@ void OSRP_generic(netlist const & circuit, detailed_placement & pl){
             for(index_t i=0; i<cells.size(); ++i) no_permutation[i] = i;
 
             std::vector<int_t> final_positions;
-
+            std::cout << "Optimizing" << std::endl;
             if(NON_CONVEX){
                 std::vector<int> flipped;
                 optimize_noncvx_sequence(nets, no_permutation, final_positions, flipped, flippability, lims);
@@ -415,6 +431,7 @@ void OSRP_generic(netlist const & circuit, detailed_placement & pl){
             else{
                 optimize_convex_sequence(nets, no_permutation, final_positions, lims);
             }
+            std::cout << "Done" << std::endl;
 
             // Update the positions and orientations
             for(index_t i=0; i<cells.size(); ++i){
