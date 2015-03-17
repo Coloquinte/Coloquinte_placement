@@ -1,10 +1,14 @@
 
 #include "coloquinte/detailed.hxx"
 #include "coloquinte/circuit_helper.hxx"
+
 #include "coloquinte/optimization_subproblems.hxx"
 #include "coloquinte/union_find.hxx"
+#include "coloquinte/piecewise_linear.hxx"
 
 #include <cassert>
+
+#include <iostream>
 
 namespace coloquinte{
 namespace dp{
@@ -158,7 +162,7 @@ struct Hnet_group{
                 bool flipped  = flip[pins[p].cell_index];
                 int_t wdth    = cell_widths[pins[p].cell_index];
                 mm.merge( flipped ? 
-                    minmax(cur_pos + wdth - pins[p].offset.min, cur_pos + wdth - pins[p].offset.max)
+                    minmax(cur_pos + wdth - pins[p].offset.max, cur_pos + wdth - pins[p].offset.min)
                   : minmax(cur_pos + pins[p].offset.min, cur_pos + pins[p].offset.max)
                 );
             }
@@ -311,11 +315,37 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
          loc_flipps[permutation[i]] = flippability[i];
     }
 
-    std::vector<cell_bound> bounds;
-    std::vector<int_t> right_slopes(permutation.size(), 0);
+    int_t min_limit = std::numeric_limits<int_t>::min();
+    for(index_t i=0; i<loc_ranges.size(); ++i){
+        min_limit = std::max(loc_ranges[i].first, min_limit);
+        loc_ranges[i].first = min_limit;
+        min_limit += loc_widths[i];
+    }
+    int_t max_limit = std::numeric_limits<int_t>::max();
+    for(index_t i=loc_ranges.size(); i>0; --i){
+        max_limit = std::min(loc_ranges[i-1].second, max_limit);
+        max_limit -= loc_widths[i-1];
+        loc_ranges[i-1].second = max_limit;
+    }
+
+    for(index_t i=0; i<loc_ranges.size(); ++i){
+        if(loc_ranges[i].first > loc_ranges[i].second){
+            return std::numeric_limits<std::int64_t>::max(); // Infeasible: return a very big cost
+        }
+    }
+
+    std::vector<piecewise_linear_function> unflipped_cost_functions, flipped_cost_functions;
+    for(index_t i=0; i<loc_ranges.size(); ++i){
+        auto cur = piecewise_linear_function(loc_ranges[i].first, loc_ranges[i].second);
+        unflipped_cost_functions.push_back(cur);
+        flipped_cost_functions.push_back(cur);
+    }
+
     for(index_t n=0; n<nets.nets.size(); ++n){
         index_t fst_c=std::numeric_limits<index_t>::max(), lst_c=0;
-        int_t fst_pin_offs=0, lst_pin_offs=0;
+        int_t fst_pin_offs_mn=0, lst_pin_offs_mn=0,
+              fst_pin_offs_mx=0, lst_pin_offs_mx=0;
+
         assert(nets.net_limits[n+1] > nets.net_limits[n]);
         auto cur_net = nets.nets[n];
         for(index_t p=nets.net_limits[n]; p<nets.net_limits[n+1]; ++p){
@@ -323,25 +353,70 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
             index_t cur_cell = permutation[nets.pins[p].cell_index];
             if(cur_cell < fst_c){
                 fst_c = cur_cell;
-                fst_pin_offs = nets.pins[p].offset.min;
+                fst_pin_offs_mn = nets.pins[p].offset.min;
+                fst_pin_offs_mx = nets.pins[p].offset.max;
             }
             if(cur_cell >= lst_c){
                 lst_c = cur_cell;
-                lst_pin_offs = nets.pins[p].offset.max;
+                lst_pin_offs_mn = nets.pins[p].offset.min;
+                lst_pin_offs_mx = nets.pins[p].offset.max;
             }
         }
         if(cur_net.has_ext_pins){
-            bounds.push_back(cell_bound(fst_c, cur_net.ext_pins.min - fst_pin_offs, cur_net.weight));
-            bounds.push_back(cell_bound(lst_c, cur_net.ext_pins.max - lst_pin_offs, cur_net.weight));
-
-            right_slopes[lst_c] += cur_net.weight;
+            unflipped_cost_functions[fst_c].add_bislope(-cur_net.weight, 0, cur_net.ext_pins.min - fst_pin_offs_mn);
+            unflipped_cost_functions[lst_c].add_bislope(0,  cur_net.weight, cur_net.ext_pins.max - lst_pin_offs_mx);
+            flipped_cost_functions[fst_c].add_bislope(-cur_net.weight, 0, cur_net.ext_pins.min - loc_widths[fst_c] + fst_pin_offs_mx);
+            flipped_cost_functions[lst_c].add_bislope(0,  cur_net.weight, cur_net.ext_pins.max - loc_widths[lst_c] + lst_pin_offs_mn);
         }
         else{
-            right_slopes[lst_c] += cur_net.weight;
-            right_slopes[fst_c] -= cur_net.weight;
+            unflipped_cost_functions[fst_c].add_monotone(-cur_net.weight, -fst_pin_offs_mn);
+            unflipped_cost_functions[lst_c].add_monotone( cur_net.weight, -lst_pin_offs_mx);
+            flipped_cost_functions[fst_c].add_monotone(-cur_net.weight, fst_pin_offs_mx - loc_widths[fst_c] );
+            flipped_cost_functions[lst_c].add_monotone( cur_net.weight, lst_pin_offs_mn - loc_widths[lst_c] );
         }
     }
-    bool feasible = place_noncvx_single_row(loc_widths, loc_ranges, loc_flipps, bounds, right_slopes, positions, flippings);
+
+    std::vector<piecewise_linear_function> prev_mins, merged_costs;
+    for(index_t i=0; i<loc_ranges.size(); ++i){
+        merged_costs.push_back(loc_flipps[i] ?
+            piecewise_linear_function::minimum(unflipped_cost_functions[i], flipped_cost_functions[i])
+          : unflipped_cost_functions[i]
+        );
+
+        if(i>0){
+            prev_mins.push_back(prev_mins.back().previous_min_of_sum(merged_costs.back(), loc_widths[i-1]));
+        }
+        else{
+            prev_mins.push_back(merged_costs.back().previous_min());
+        }
+    }
+
+    for(auto const M : prev_mins){
+        for(index_t i=0; i+1<M.point_values.size(); ++i){
+            assert(M.point_values[i].second >= M.point_values[i+1].second);
+        }
+    }
+
+    flippings.resize(cell_ranges.size(), 0); positions.resize(cell_ranges.size(), 0);
+
+    int_t pos = std::numeric_limits<int_t>::max();
+    for(index_t i=loc_ranges.size(); i>0; --i){
+        // Find the best position and flipping for each cell
+        pos = prev_mins[i-1].last_before(std::min(pos - loc_widths[i-1], loc_ranges[i-1].second) );
+        positions[i-1] = pos;
+
+        if(loc_flipps[i-1] and flipped_cost_functions[i-1].value_at(pos) < unflipped_cost_functions[i-1].value_at(pos)){
+            flippings[i-1] = 1;
+        }
+    }
+
+    for(index_t i=0; i<loc_ranges.size(); ++i){
+        assert(positions[i] >= loc_ranges[i].first);
+        assert(positions[i] <= loc_ranges[i].second);
+    }
+    for(index_t i=0; i+1<loc_ranges.size(); ++i){
+        assert(positions[i] + loc_widths[i] <= positions[i+1]);
+    }
 
     auto permuted_positions = positions;
     auto permuted_flippings = flippings;
@@ -350,14 +425,15 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
         permuted_flippings[i] = flippings[permutation[i]];
     }
 
-    if(feasible)
-        return nets.get_cost(permuted_positions, permuted_flippings);
-    else
-        return std::numeric_limits<std::int64_t>::max(); // Infeasible: return a very big cost
+    return nets.get_cost(permuted_positions, permuted_flippings);
 }
 
 std::vector<std::pair<int_t, int_t> > get_cell_ranges(netlist const & circuit, detailed_placement const & pl, std::vector<index_t> const & cells){
     std::vector<std::pair<int_t, int_t> > lims;
+
+    for(index_t i=0; i+1<cells.size(); ++i){
+        assert(pl.plt_.positions_[cells[i]].x_ + circuit.get_cell(cells[i]).size.x_ <= pl.plt_.positions_[cells[i+1]].x_);
+    }
 
     // Extreme limits, except macros are allowed to be beyond the limit of the placement area
     int_t lower_lim = pl.get_limit_positions(circuit, cells.front()).first;
@@ -376,9 +452,6 @@ std::vector<std::pair<int_t, int_t> > get_cell_ranges(netlist const & circuit, d
         }
         lims.push_back(cur_lim);
     }
-    for(index_t i=0; i+1<cells.size(); ++i){
-        assert(pl.plt_.positions_[cells[i]].x_ + circuit.get_cell(cells[i]).size.x_ <= pl.plt_.positions_[cells[i+1]].x_);
-    }
 
     return lims;
 }
@@ -395,7 +468,7 @@ void OSRP_generic(netlist const & circuit, detailed_placement & pl){
         for(index_t OSRP_cell = pl.get_first_cell_on_row(r); OSRP_cell != null_ind; OSRP_cell = pl.get_next_cell_on_row(OSRP_cell, r)){
             auto attr = circuit.get_cell(OSRP_cell).attributes;
             cells.push_back(OSRP_cell);
-            flippability.push_back( (attr & XFlippable) != 0);
+            flippability.push_back( (attr & XFlippable) != 0 ? 1 : 0);
         }
 
         if(not cells.empty()){
@@ -489,7 +562,8 @@ void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t
                     new_cell_order[r_ind] = cells[i];
                     pl.plt_.positions_[cells[i]].x_ = best_positions[r_ind];
                     if(NON_CONVEX){
-                        pl.plt_.orientations_[cells[i]].x_ ^= static_cast<bool>(best_flippings[r_ind]);
+                        bool old_orient = pl.plt_.orientations_[cells[i]].x_;
+                        pl.plt_.orientations_[cells[i]].x_ = best_flippings[r_ind] ? not old_orient : old_orient;
                     }
                 }
 
@@ -497,7 +571,7 @@ void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t
                 cells = new_cell_order;
 
                 assert(best_cost < std::numeric_limits<std::int64_t>::max());
-           }
+            }
     
             if(OSRP_cell != null_ind){
                 assert(cells.size() == range);

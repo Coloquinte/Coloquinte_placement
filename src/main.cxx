@@ -129,7 +129,7 @@ int main(){
     output_report(circuit, LB_pl);
 
     float_t pulling_force = 0.01;
-    for(int i=0; i<1; ++i, pulling_force += 0.03){
+    for(int i=0; i<50; ++i, pulling_force += 0.03){
         // Create a legalizer and bipartition it until we have sufficient precision (~2 to 10 standard cell widths)
         auto legalizer = get_rough_legalizer(circuit, LB_pl, surface);
         for(int quad_part =0; 10u * (1u << (2*quad_part)) < circuit.cell_cnt(); quad_part++){ // Here, approximately 10 cells in each region
@@ -179,17 +179,19 @@ int main(){
         std::cout << "Legalized" << std::endl;
         output_report(circuit, LB_pl, UB_pl);
 
-        //dp::swaps_global_HPWL(circuit, LEG, 3, 4);
-        //dp::get_result(circuit, LEG, UB_pl);
-        //std::cout << "Global swaps" << std::endl;
-        //output_report(circuit, LB_pl, UB_pl);
+        dp::swaps_global_HPWL(circuit, LEG, 3, 4);
+        dp::get_result(circuit, LEG, UB_pl);
+        std::cout << "Global swaps" << std::endl;
+        output_report(circuit, LB_pl, UB_pl);
 
-        dp::OSRP_convex_HPWL(circuit, LEG);
+        //dp::OSRP_convex_HPWL(circuit, LEG);
+        dp::OSRP_noncvx_HPWL(circuit, LEG);
         dp::get_result(circuit, LEG, UB_pl);
         std::cout << "Ordered row optimization" << std::endl;
         output_report(circuit, LB_pl, UB_pl);
 
-        dp::swaps_row_convex_HPWL(circuit, LEG, 4);
+        //dp::swaps_row_convex_HPWL(circuit, LEG, 4);
+        dp::swaps_row_noncvx_HPWL(circuit, LEG, 4);
         dp::get_result(circuit, LEG, UB_pl);
         std::cout << "Local swaps" << std::endl;
         output_report(circuit, LB_pl, UB_pl);

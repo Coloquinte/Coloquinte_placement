@@ -10,12 +10,14 @@ set ( includes          coloquinte/circuit.hxx
                         coloquinte/detailed.hxx
                         coloquinte/topologies.hxx
                         coloquinte/optimization_subproblems.hxx
+                        coloquinte/piecewise_linear.hxx
     )	           
 set ( cpps              circuit.cxx
                         checkers.cxx
                         rough_legalizers.cxx
                         solvers.cxx
                         optimization_subproblems.cxx
+                        piecewise_linear.cxx
                         orientation.cxx
                         detailed.cxx
                         cell_swapping.cxx
