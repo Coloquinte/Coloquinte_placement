@@ -3,9 +3,19 @@
 
 #include <cassert>
 
+#include <iostream>
+
 namespace coloquinte{
 
 namespace{
+
+void print(piecewise_linear_function const & lf){
+    for(p_v pt : lf.point_values){
+        std::cout << pt.first << ": " << pt.second << ", ";
+    }
+    std::cout << std::endl;
+}
+
 struct pl_edge{
     p_v f, s;
 
@@ -14,12 +24,12 @@ struct pl_edge{
         assert(a.f.first < b.s.first and a.s.first > b.f.first);
         assert(a.f.first < a.s.first and b.f.first < b.s.first);
         
-        int_t denom = (a.s.first-a.f.first) * (b.s.second-b.f.second)
+        std::int64_t denom = (a.s.first-a.f.first) * (b.s.second-b.f.second)
                     - (a.s.second-a.f.second) * (b.s.first-b.f.first);
 
-        int_t a_num   = (a.f.second-b.f.second) * (b.s.first-b.f.first)
+        std::int64_t a_num   = (a.f.second-b.f.second) * (b.s.first-b.f.first)
                     - (a.f.first-b.f.first) * (b.s.second-b.f.second);
-        int_t b_num = (a.f.second-b.f.second) * (a.s.first-a.f.first)
+        std::int64_t b_num = (a.f.second-b.f.second) * (a.s.first-a.f.first)
                     - (a.f.first-b.f.first) * (a.s.second-a.f.second);
 
         // There is an intersection if o_num / denom and num / denom are in [0,1]
@@ -31,16 +41,19 @@ struct pl_edge{
 
         if(intersect){
             // Find where they intersect
-            int_t dist = a_num*(a.s.first-a.f.first);
+            std::int64_t dist = a_num*(a.s.first-a.f.first);
             if( (dist % denom == 0) ){ // Exact integer intersection
                 int_t pos = dist/denom;
-                if(pos > std::max(a.f.first, b.f.first) ) // Necessarily smaller than s.first due to the previous condition
+                if(pos > std::max(a.f.first, b.f.first)  and pos < std::min(a.s.first, b.s.first) ){ // Necessarily smaller than s.first due to the previous condition
+                    std::cout << "Pushing single intersection" << std::endl;
                     lf.point_values.push_back(p_v(pos, a.value_at(pos)));
+                }
             }
             else{ // Non exact intersection: create two integers since I don't want to mess with floating point
                 int_t pos1 = a.f.first + dist / denom;
                 int_t pos2 = pos1 + 1;
                 // Value_at is only an approximation, but it shouldn't be too bad
+                std::cout << "Pushing double intersection " << pos1 << " from " << a.f.first << " to " << a.s.first << " and num/denom " << a_num << " and " << denom << std::endl;
                 if(pos1 > std::max(a.f.first, b.f.first) )
                     lf.point_values.push_back(p_v(pos1, std::min(a.value_at(pos1), b.value_at(pos1))));
                 if(pos2 < std::min(a.s.first, b.s.first) )
@@ -82,18 +95,26 @@ void piecewise_linear_function::add_bislope(int_t s_l, int_t s_r, int_t pos){
     //assert(pos <= point_values.back().first);
     //assert(pos >= point_values.front().first);
 
-    auto it = point_values.begin();
-    while(it->first < pos){
-        it->second += s_l * (it->first - pos);
-        ++it;
-        assert(it != point_values.end());
+    if(pos >= point_values.back().first){
+        add_monotone(s_l, point_values.front().first - pos);
     }
-    if(it->first != pos){
-        point_values.insert(it, p_v(pos, pl_edge(*std::prev(it), *it).value_at(pos)));
+    else if(pos <= point_values.front().first){
+        add_monotone(s_r, point_values.front().first - pos);
     }
-    for(auto & V : point_values){
-        if(V.first > pos)
-            V.second += s_r * (V.first - pos);
+    else{
+        auto it = point_values.begin();
+        while(it->first < pos){
+            it->second += s_l * (it->first - pos);
+            ++it;
+            assert(it != point_values.end());
+        }
+        if(it->first != pos){
+            point_values.insert(it, p_v(pos, pl_edge(*std::prev(it), *it).value_at(pos)));
+        }
+        for(auto & V : point_values){
+            if(V.first > pos)
+                V.second += s_r * (V.first - pos);
+        }
     }
 }
 
@@ -103,6 +124,9 @@ piecewise_linear_function::piecewise_linear_function(int_t min_def, int_t max_de
 }
 
 piecewise_linear_function piecewise_linear_function::previous_min() const{
+    std::cout << "Doing previous min" << std::endl;
+    print(*this);
+
     piecewise_linear_function ret;
     auto it = point_values.begin();
     ret.point_values.push_back(*it);
@@ -121,10 +145,15 @@ piecewise_linear_function piecewise_linear_function::previous_min() const{
             ret.point_values.push_back(*it);
         }
     }
+    std::cout << "Done previous min" << std::endl;
+    print(ret);
     return ret;
 }
 
 piecewise_linear_function piecewise_linear_function::previous_min_of_sum(piecewise_linear_function const & a, int_t shift) const{
+    std::cout << "Previous min of sum with shift " << shift << std::endl;
+    print(*this);
+    print(a);
     piecewise_linear_function ret;
 
     // Go to the correct definition
@@ -161,6 +190,8 @@ piecewise_linear_function piecewise_linear_function::previous_min_of_sum(piecewi
             ++b_it;
         }
     }
+    std::cout << "Done sum" << std::endl;
+    print(ret);
 
     return ret.previous_min();
 }
@@ -172,6 +203,7 @@ int_t piecewise_linear_function::last_before(int_t pos) const{
         if(it->first <= pos){
             return it->first;
         }
+        ++it;
     }
     assert(false); // We should have found it if the bound was correct
 }
@@ -192,6 +224,9 @@ piecewise_linear_function piecewise_linear_function::piecewise_linear_function::
     assert(a.point_values.front().first == b.point_values.front().first);
     assert(a.point_values.back().first == b.point_values.back().first);
 
+    std::cout << " Doing minimum" << std::endl;
+    print(a);
+    print(b);
     piecewise_linear_function ret;
     auto a_it = a.point_values.begin(), b_it = b.point_values.begin();
     auto a_end = a.point_values.end(), b_end = b.point_values.end();
@@ -200,6 +235,7 @@ piecewise_linear_function piecewise_linear_function::piecewise_linear_function::
 
     assert(std::next(a_it) != a_end and std::next(b_it) != b_end);
     while(std::next(a_it) != a_end and std::next(b_it) != b_end){
+        print(ret);
         pl_edge a_edge(*a_it, *std::next(a_it)), b_edge(*b_it, *std::next(b_it));
         // Three cases: one of them always below, or both intersect
         // Both intersect: we push the values when intersecting
@@ -224,6 +260,8 @@ piecewise_linear_function piecewise_linear_function::piecewise_linear_function::
             ++b_it;
         }
     }
+    std::cout << "Done minimum" << std::endl;
+    print(ret);
     return ret;
 }
 
