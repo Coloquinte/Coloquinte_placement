@@ -1,8 +1,10 @@
 
 #include "coloquinte/detailed.hxx"
 #include "coloquinte/circuit_helper.hxx"
+
 #include "coloquinte/optimization_subproblems.hxx"
 #include "coloquinte/union_find.hxx"
+#include "coloquinte/piecewise_linear.hxx"
 
 #include <cassert>
 
@@ -299,211 +301,6 @@ inline std::int64_t optimize_convex_sequence(Hnet_group const & nets, std::vecto
         return std::numeric_limits<std::int64_t>::max(); // Infeasible: return a very big cost
 }
 
-class piecewise_linear_function{
-    typedef std::pair<int_t, int_t> p_v;
-    std::vector<p_v> point_values;
-
-    public:
-    static piecewise_linear_function minimum(piecewise_linear_function const & a, piecewise_linear_function const & b);
-    piecewise_linear_function previous_min_of_sum(piecewise_linear_function const & o, int_t added_cell_width) const;
-    piecewise_linear_function previous_min() const;
-
-    int_t value_at(int_t pos) const;
-    int_t last_before(int_t pos) const;
-
-    void add_monotone(int_t slope, int_t offset);
-    void add_bislope(int_t s_l, int_t s_r, int_t pos);
-
-    piecewise_linear_function(){}
-    piecewise_linear_function(int_t min_def, int_t max_def);
-
-
-    struct pl_edge{
-        p_v f, s;
-
-        static void push_intersections(pl_edge a, pl_edge b, piecewise_linear_function & lf){
-            // Strict, because it makes everything easier
-            assert(a.f.first < b.s.first and a.s.first > b.f.first);
-            assert(a.f.first < a.s.first and b.f.first < b.s.first);
-            
-            int_t denom = (a.s.first-a.f.first) * (b.s.second-b.f.second)
-                        - (a.s.second-a.f.second) * (b.s.first-b.f.first);
-
-            int_t a_num   = (a.f.second-b.f.second) * (b.s.first-b.f.first)
-                        - (a.f.first-b.f.first) * (b.s.second-b.f.second);
-            int_t b_num = (a.f.second-b.f.second) * (a.s.first-a.f.first)
-                        - (a.f.first-b.f.first) * (a.s.second-a.f.second);
-
-            // There is an intersection if o_num / denom and num / denom are in [0,1]
-
-            // Strict since intersections on a slope change point are already handled
-            bool intersect = denom > 0 ? 
-                (a_num < denom and b_num < denom and a_num > 0 and b_num > 0)
-              : (a_num > denom and b_num > denom and a_num < 0 and b_num < 0);
-
-            if(intersect){
-                // Find where they intersect
-                int_t dist = a_num*(a.s.first-a.f.first);
-                if( (dist % denom == 0) ){ // Exact integer intersection
-                    int_t pos = dist/denom;
-                    if(pos > std::max(a.f.first, b.f.first) ) // Necessarily smaller than s.first due to the previous condition
-                        lf.point_values.push_back(p_v(pos, a.value_at(pos)));
-                }
-                else{ // Non exact intersection: create two integers since I don't want to mess with floating point
-                    int_t pos1 = a.s.first + dist / denom;
-                    int_t pos2 = pos1 + 1;
-                    // Value_at is only an approximation, but it shouldn't be too bad
-                    if(pos1 > std::max(a.f.first, b.f.first) )
-                        lf.point_values.push_back(p_v(pos1, std::min(a.value_at(pos1), b.value_at(pos1))));
-                    if(pos2 < std::min(a.s.first, b.s.first) )
-                        lf.point_values.push_back(p_v(pos2, std::min(a.value_at(pos2), b.value_at(pos2))));
-                }
-            }
-        }
-
-        int_t value_at(int_t pos) const{
-            assert(pos > f.first and pos < s.first);
-            return (f.second * (s.first - pos) + s.second * (pos - f.first)) / (s.first - f.first); 
-        }
-
-        bool above(p_v const o) const{
-            int_t pos = o.first;
-            assert(pos > f.first and pos < s.first);
-            return (f.second * (s.first - pos) + s.second * (pos - f.first)) > o.second * (s.first - f.first); 
-        }
-
-        pl_edge(p_v a, p_v b) : f(a), s(b) {}
-    };
-
-};
-
-void piecewise_linear_function::add_monotone(int_t slope, int_t offset){
-    for(auto & V : point_values){
-        // Offset taken into account here, multiplied with the slope
-        V.second += slope * (V.first - point_values.front().first + offset);
-    }
-}
-
-void piecewise_linear_function::add_bislope(int_t s_l, int_t s_r, int_t pos){
-    for(auto & V : point_values){
-        if(V.first < pos)
-            V.second += s_l * (V.first - pos);
-        else
-            V.second += s_r * (V.first - pos);
-    }
-}
-
-piecewise_linear_function::piecewise_linear_function(int_t min_def, int_t max_def){
-    point_values.push_back(p_v(min_def, 0));
-    point_values.push_back(p_v(max_def, 0));
-}
-
-piecewise_linear_function piecewise_linear_function::previous_min() const{
-    piecewise_linear_function ret;
-    ret.point_values.push_back(point_values.front());
-    // TODO: not correct as is: use an edge
-    for(p_v const V : point_values){
-        if(V.second < ret.point_values.back().second and V.first > ret.point_values.back().first){
-            ret.point_values.push_back(V);
-        }
-    }
-    return ret;
-}
-
-// TODO
-piecewise_linear_function piecewise_linear_function::previous_min_of_sum(piecewise_linear_function const & a, int_t shift) const{
-
-    piecewise_linear_function ret;
-    auto it = point_values.begin(), a_it = a.point_values.begin();
-
-    
-    while(std::next(it) != point_values.end() and std::next(it)->first <= a.point_values.front().first){
-        ++it;
-    }
-        for(auto a_it = a.point_values.begin(); a_it != a.point_values.end() && it != point_values.end();){
-            if(a_it->first < it->first){
-                ++a_it;
-            }
-            else if(b_it->first < it->first){
-                ++b_it;
-            }
-            else{
-                ++a_it;
-                ++b_it;
-
-            }
-        }
-
-    }
-    else{
-        ret = a;
-    }
-    return ret.previous_min();
-}
-
-
-int_t piecewise_linear_function::last_before(int_t pos) const{
-    auto it = point_values.rbegin();
-    while(it != point_values.rend()){
-        if(it->first <= pos){
-            return it->first;
-        }
-    }
-    assert(false); // We should have found it if the bound was correct
-}
-
-int_t piecewise_linear_function::value_at(int_t pos) const{
-    // First position bigger or equal than pos
-    auto it = std::lower_bound(point_values.begin(), point_values.end(), pos, [](p_v o, int_t v){ return o.first < v; });
-    if(pos != it->first){
-        assert(it != point_values.begin());
-        return pl_edge(*std::prev(it), *it).value_at(pos);
-    }
-    else{
-        return it->second;
-    }
-}
-
-piecewise_linear_function piecewise_linear_function::piecewise_linear_function::minimum(piecewise_linear_function const & a, piecewise_linear_function const & b){
-    assert(a.point_values.front().first == b.point_values.front().first);
-    assert(a.point_values.back().first == b.point_values.back().first);
-
-    piecewise_linear_function ret;
-    auto a_it = a.point_values.begin(), b_it = b.point_values.begin();
-    auto a_end = a.point_values.end(), b_end = b.point_values.end();
-
-    ret.point_values.push_back(p_v(a_it->first, std::min(a_it->second, b_it->second)));
-
-    assert(std::next(a_it) != a_end and std::next(b_it) != b_end);
-    while(std::next(a_it) != a_end and std::next(b_it) != b_end){
-        pl_edge a_edge(*a_it, *std::next(a_it)), b_edge(*b_it, *std::next(b_it));
-
-        // Three cases: one of them always below, or both intersect
-        // Both intersect: we push the values when intersecting
-        pl_edge::push_intersections(a_edge, b_edge, ret);
-
-        // In any case, we push the value of the one below if it finishes, and increment the iterator
-        if(a_edge.s.first < b_edge.s.first){
-            ++a_it;
-            if(b_edge.above(a_edge.s)){ // We push a_edge.s
-                ret.point_values.push_back(a_edge.s);
-            }
-        }
-        else if(a_edge.s.first > b_edge.s.first){
-            ++b_it;
-            if(a_edge.above(b_edge.s)){ // We push a_edge.s
-                ret.point_values.push_back(b_edge.s);
-            }
-        }
-        else{
-            ret.point_values.push_back(p_v(a_edge.s.first, std::min(a_edge.s.second, b_edge.s.second)));
-            ++a_it;
-            ++b_it;
-        }
-    }
-    return ret;
-}
-
 // TODO: take modified order relative to the obstacles into account
 inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vector<index_t> const & permutation, std::vector<int_t> & positions, std::vector<int> & flippings, std::vector<int> const & flippability, std::vector<std::pair<int_t, int_t> > const & cell_ranges){
     // Get the widths of the cells in row order
@@ -561,8 +358,6 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
             flipped_cost_functions[lst_c].add_monotone( cur_net.weight, lst_pin_offs_mn - loc_widths[lst_c]);
         }
     }
-    // bool feasible = place_noncvx_single_row(loc_widths, loc_ranges, loc_flipps, bounds, right_slopes, positions, flippings);
-
 
     std::vector<piecewise_linear_function> prev_mins, merged_costs;
     for(index_t i=0; i<loc_ranges.size(); ++i){
