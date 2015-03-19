@@ -349,21 +349,21 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
         }
         if(cur_net.has_ext_pins){
             unflipped_cost_functions[fst_c].add_bislope(-cur_net.weight, 0, cur_net.ext_pins.min - fst_pin_offs_mn);
-            unflipped_cost_functions[lst_c].add_bislope(0,  cur_net.weight, cur_net.ext_pins.min - lst_pin_offs_mx);
+            unflipped_cost_functions[lst_c].add_bislope(0,  cur_net.weight, cur_net.ext_pins.max - lst_pin_offs_mx);
             flipped_cost_functions[fst_c].add_bislope(-cur_net.weight, 0, cur_net.ext_pins.min - loc_widths[fst_c] + fst_pin_offs_mx);
-            flipped_cost_functions[lst_c].add_bislope(0,  cur_net.weight, cur_net.ext_pins.min - loc_widths[lst_c] + lst_pin_offs_mn);
+            flipped_cost_functions[lst_c].add_bislope(0,  cur_net.weight, cur_net.ext_pins.max - loc_widths[lst_c] + lst_pin_offs_mn);
         }
         else{
-            unflipped_cost_functions[fst_c].add_monotone(-cur_net.weight, -fst_pin_offs_mn);
-            unflipped_cost_functions[lst_c].add_monotone( cur_net.weight, -lst_pin_offs_mx);
-            flipped_cost_functions[fst_c].add_monotone(-cur_net.weight, fst_pin_offs_mx - loc_widths[fst_c]);
-            flipped_cost_functions[lst_c].add_monotone( cur_net.weight, lst_pin_offs_mn - loc_widths[lst_c]);
+            unflipped_cost_functions[fst_c].add_monotone(-cur_net.weight, fst_pin_offs_mn);
+            unflipped_cost_functions[lst_c].add_monotone( cur_net.weight, lst_pin_offs_mx);
+            flipped_cost_functions[fst_c].add_monotone(-cur_net.weight, loc_widths[fst_c] - fst_pin_offs_mx);
+            flipped_cost_functions[lst_c].add_monotone( cur_net.weight, loc_widths[lst_c] - lst_pin_offs_mn);
         }
     }
 
     std::vector<piecewise_linear_function> prev_mins, merged_costs;
     for(index_t i=0; i<loc_ranges.size(); ++i){
-        std::cout << "Function for " << i << " of " << loc_ranges.size() << std::endl;
+        //std::cout << "Function for " << i << " of " << loc_ranges.size() << std::endl;
         merged_costs.push_back(piecewise_linear_function::minimum(unflipped_cost_functions[i], flipped_cost_functions[i]));
         if(i>0){
             prev_mins.push_back(prev_mins.back().previous_min_of_sum(merged_costs.back(), loc_widths[i-1]));
@@ -378,26 +378,26 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
     bool feasible = true;
     int_t max_limit = std::numeric_limits<int_t>::max();
     for(index_t i=loc_ranges.size(); i>0; --i){
-        std::cout << "Result for " << i-1 << " of " << loc_ranges.size() << std::endl;
+        //std::cout << "Result for " << i-1 << " of " << loc_ranges.size() << std::endl;
         // Find the best position and flipping for each cell
         max_limit = std::min(max_limit, cell_ranges[i-1].second) - loc_widths[i-1];
         if(max_limit < cell_ranges[i-1].first){
-            std::cout << "Infeasible" << std::endl;
+            //std::cout << "Infeasible" << std::endl;
             feasible = false;
             break;
         }
         int_t pos = prev_mins[i-1].last_before(max_limit);
         max_limit = pos;
-        
         positions[i-1] = pos;
-        std::cout << "Flippability? " << std::endl;
+
+        //std::cout << "Flippability? " << std::endl;
         if(flippability[i-1] and flipped_cost_functions[i-1].value_at(pos) < unflipped_cost_functions[i-1].value_at(pos)){
             flippings[i-1] = 1;
         }
-        std::cout << "Done" << std::endl;
+        //std::cout << "Done" << std::endl;
     }
     for(index_t i=0; i<loc_ranges.size(); ++i){
-        std::cout << "Pos : " << positions[i] << ", width: " << loc_widths[i] << std::endl;
+        //std::cout << "Pos : " << positions[i] << ", width: " << loc_widths[i] << std::endl;
         assert(positions[i] >= loc_ranges[i].first);
         assert(positions[i] + loc_widths[i] <= loc_ranges[i].second);
     }
@@ -422,7 +422,7 @@ std::vector<std::pair<int_t, int_t> > get_cell_ranges(netlist const & circuit, d
     std::vector<std::pair<int_t, int_t> > lims;
 
     for(index_t i=0; i<cells.size(); ++i){
-        std::cout << "Cell " << cells[i] << " between " << pl.plt_.positions_[cells[i]].x_ << " and " << pl.plt_.positions_[cells[i]].x_ + circuit.get_cell(cells[i]).size.x_ << std::endl;
+        //std::cout << "Cell " << cells[i] << " between " << pl.plt_.positions_[cells[i]].x_ << " and " << pl.plt_.positions_[cells[i]].x_ + circuit.get_cell(cells[i]).size.x_ << std::endl;
     }
 
     for(index_t i=0; i+1<cells.size(); ++i){
@@ -503,7 +503,7 @@ void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t
     assert(range >= 2);
 
     for(index_t r=0; r<pl.row_cnt(); ++r){
-        std::cout << "Row " << r << std::endl;
+        //std::cout << "Row " << r << std::endl;
         index_t OSRP_cell = pl.get_first_cell_on_row(r);
 
         while(OSRP_cell != null_ind){
@@ -549,7 +549,7 @@ void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t
                         best_positions = positions;
                     }
                 }while(std::next_permutation(permutation.begin(), permutation.end()));
-                std::cout << "Finished trying" << std::endl;
+                //std::cout << "Finished trying" << std::endl;
 
                 std::vector<index_t> new_cell_order(cells.size());
                 // Update the positions and the topology
@@ -565,14 +565,14 @@ void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t
                 pl.reorder_cells(cells, new_cell_order, r);
                 cells = new_cell_order;
 
-                std::cout << "New order: " << std::endl;
+                //std::cout << "New order: " << std::endl;
                 for(index_t c : cells){
-                    std::cout << c << ", ";
+                    //std::cout << c << ", ";
                 }
-                std::cout << std::endl;
+                //std::cout << std::endl;
 
                 assert(best_cost < std::numeric_limits<std::int64_t>::max());
-                std::cout << "Opt done" << std::endl;
+                //std::cout << "Opt done" << std::endl;
             }
     
             if(OSRP_cell != null_ind){
