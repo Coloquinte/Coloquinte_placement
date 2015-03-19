@@ -11,9 +11,9 @@ namespace{
 
 void print(piecewise_linear_function const & lf){
     for(p_v pt : lf.point_values){
-        //std::cout << pt.first << ": " << pt.second << ", ";
+        std::cout << pt.first << ": " << pt.second << ", ";
     }
-    //std::cout << std::endl;
+    std::cout << std::endl;
 }
 
 struct pl_edge{
@@ -45,7 +45,7 @@ struct pl_edge{
             if( (dist % denom == 0) ){ // Exact integer intersection
                 int_t pos = dist/denom;
                 if(pos > std::max(a.f.first, b.f.first)  and pos < std::min(a.s.first, b.s.first) ){ // Necessarily smaller than s.first due to the previous condition
-                    //std::cout << "Pushing single intersection" << std::endl;
+                    std::cout << "Pushing single intersection" << std::endl;
                     lf.point_values.push_back(p_v(pos, a.value_at(pos)));
                 }
             }
@@ -53,7 +53,7 @@ struct pl_edge{
                 int_t pos1 = a.f.first + dist / denom;
                 int_t pos2 = pos1 + 1;
                 // Value_at is only an approximation, but it shouldn't be too bad
-                //std::cout << "Pushing double intersection " << pos1 << " from " << a.f.first << " to " << a.s.first << " and num/denom " << a_num << " and " << denom << std::endl;
+                std::cout << "Pushing double intersection " << pos1 << " from " << a.f.first << " to " << a.s.first << " and num/denom " << a_num << " and " << denom << std::endl;
                 if(pos1 > std::max(a.f.first, b.f.first) )
                     lf.point_values.push_back(p_v(pos1, std::min(a.value_at(pos1), b.value_at(pos1))));
                 if(pos2 < std::min(a.s.first, b.s.first) )
@@ -124,7 +124,7 @@ piecewise_linear_function::piecewise_linear_function(int_t min_def, int_t max_de
 }
 
 piecewise_linear_function piecewise_linear_function::previous_min() const{
-    //std::cout << "Doing previous min" << std::endl;
+    std::cout << "Doing previous min" << std::endl;
     print(*this);
 
     piecewise_linear_function ret;
@@ -145,13 +145,13 @@ piecewise_linear_function piecewise_linear_function::previous_min() const{
             ret.point_values.push_back(*it);
         }
     }
-    //std::cout << "Done previous min" << std::endl;
+    std::cout << "Done previous min" << std::endl;
     print(ret);
     return ret;
 }
 
 piecewise_linear_function piecewise_linear_function::previous_min_of_sum(piecewise_linear_function const & a, int_t shift) const{
-    //std::cout << "Previous min of sum with shift " << shift << std::endl;
+    std::cout << "Previous min of sum with shift " << shift << std::endl;
     print(*this);
     print(a);
     piecewise_linear_function ret;
@@ -190,7 +190,7 @@ piecewise_linear_function piecewise_linear_function::previous_min_of_sum(piecewi
             ++b_it;
         }
     }
-    //std::cout << "Done sum" << std::endl;
+    std::cout << "Done sum" << std::endl;
     print(ret);
 
     return ret.previous_min();
@@ -224,7 +224,7 @@ piecewise_linear_function piecewise_linear_function::piecewise_linear_function::
     assert(a.point_values.front().first == b.point_values.front().first);
     assert(a.point_values.back().first == b.point_values.back().first);
 
-    //std::cout << " Doing minimum" << std::endl;
+    std::cout << " Doing minimum" << std::endl;
     print(a);
     print(b);
     piecewise_linear_function ret;
@@ -260,7 +260,7 @@ piecewise_linear_function piecewise_linear_function::piecewise_linear_function::
             ++b_it;
         }
     }
-    //std::cout << "Done minimum" << std::endl;
+    std::cout << "Done minimum" << std::endl;
     print(ret);
     return ret;
 }
