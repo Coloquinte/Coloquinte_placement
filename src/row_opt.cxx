@@ -459,7 +459,7 @@ void OSRP_generic(netlist const & circuit, detailed_placement & pl){
         for(index_t OSRP_cell = pl.get_first_cell_on_row(r); OSRP_cell != null_ind; OSRP_cell = pl.get_next_cell_on_row(OSRP_cell, r)){
             auto attr = circuit.get_cell(OSRP_cell).attributes;
             cells.push_back(OSRP_cell);
-            flippability.push_back( (attr & XFlippable) != 0);
+            flippability.push_back( (attr & XFlippable) != 0 ? 1 : 0);
         }
 
         if(not cells.empty()){
@@ -553,7 +553,8 @@ void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t
                     new_cell_order[r_ind] = cells[i];
                     pl.plt_.positions_[cells[i]].x_ = best_positions[r_ind];
                     if(NON_CONVEX){
-                        pl.plt_.orientations_[cells[i]].x_ ^= static_cast<bool>(best_flippings[r_ind]);
+                        bool old_orient = pl.plt_.orientations_[cells[i]].x_;
+                        pl.plt_.orientations_[cells[i]].x_ = best_flippings[r_ind] ? not old_orient : old_orient;
                     }
                 }
 

@@ -14,47 +14,32 @@ struct pl_edge{
         // Strict, because it makes everything easier
         //assert(a.f.first < b.s.first and a.s.first > b.f.first);
         //assert(a.f.first < a.s.first and b.f.first < b.s.first);
+        assert(a.f.first <= b.s.first and a.s.first >= b.f.first);
+        assert(a.f.first <= a.s.first and b.f.first <= b.s.first);
         
-        std::int64_t denom = (a.s.first-a.f.first) * (b.s.second-b.f.second)
-                    - (a.s.second-a.f.second) * (b.s.first-b.f.first);
-
-        std::int64_t a_num   = (a.f.second-b.f.second) * (b.s.first-b.f.first)
-                    - (a.f.first-b.f.first) * (b.s.second-b.f.second);
-        std::int64_t b_num = (a.f.second-b.f.second) * (a.s.first-a.f.first)
-                    - (a.f.first-b.f.first) * (a.s.second-a.f.second);
-
         // ra = (a.s.second - a.f.second) / (a.s.first - a.f.first)
         // xintersect = (yb - ya - xb * rb + xa * ra) / (ra - rb)
 
-        // There is an intersection if o_num / denom and num / denom are in [0,1]
+        double ra = static_cast<double>(a.s.second - a.f.second) / (a.s.first - a.f.first);
+        double rb = static_cast<double>(b.s.second - b.f.second) / (b.s.first - b.f.first);
 
-        // Strict since intersections on a slope change point are already handled
-        bool intersect = denom > 0 ? 
-            (a_num < denom and b_num < denom and a_num > 0 and b_num > 0)
-          : (a_num > denom and b_num > denom and a_num < 0 and b_num < 0);
+        double xintersect = (b.f.second - a.f.second - rb * b.f.first + ra * a.f.first) / (ra - rb);
+        if( not xintersect ) return;
 
-        if(intersect){
-            // Find where they intersect
-            //std::int64_t dist = a_num*(a.s.first-a.f.first);
-            double prop = static_cast<double>(a_num)/static_cast<double>(denom);
-            assert(prop >= 0.0 and prop <= 1.0);
-            double d_pos = prop * (a.s.first - a.f.first);
-            int_t pos = a.f.first + static_cast<int_t>(std::floor(d_pos));
-            assert(pos >= a.f.first and pos <= a.s.first);
-            if( std::ceil(d_pos) == std::floor(d_pos) ){ // Exact integer intersection
-                if(pos > std::max(a.f.first, b.f.first) and pos < std::min(a.s.first, b.s.first) ){ // Necessarily smaller than s.first due to the previous condition
-                    lf.point_values.push_back(p_v(pos, a.value_at(pos)));
-                }
+        int_t pos = xintersect;
+        if( std::ceil(xintersect) == std::floor(xintersect) ){ // Exact integer intersection
+            if(pos > std::max(a.f.first, b.f.first) and pos < std::min(a.s.first, b.s.first) ){ // Necessarily smaller than s.first due to the previous condition
+                lf.point_values.push_back(p_v(pos, a.value_at(pos)));
             }
-            else{ // Non exact intersection: create two integers since I don't want to mess with floating point
-                int_t pos1 = pos;
-                int_t pos2 = pos + 1;
-                // Value_at is only an approximation, but it shouldn't be too bad
-                if(pos1 > std::max(a.f.first, b.f.first) and pos1 < std::min(a.s.first, b.s.first))
-                    lf.point_values.push_back(p_v(pos1, std::min(a.value_at(pos1), b.value_at(pos1))));
-                if(pos2 > std::max(a.f.first, b.f.first) and pos2 < std::min(a.s.first, b.s.first))
-                    lf.point_values.push_back(p_v(pos2, std::min(a.value_at(pos2), b.value_at(pos2))));
-            }
+        }
+        else{ // Non exact intersection: create two integers since I don't want to mess with floating point
+            int_t pos1 = pos;
+            int_t pos2 = pos + 1;
+            // Value_at is only an approximation, but it shouldn't be too bad
+            if(pos1 > std::max(a.f.first, b.f.first) and pos1 < std::min(a.s.first, b.s.first))
+                lf.point_values.push_back(p_v(pos1, std::min(a.value_at(pos1), b.value_at(pos1))));
+            if(pos2 > std::max(a.f.first, b.f.first) and pos2 < std::min(a.s.first, b.s.first))
+                lf.point_values.push_back(p_v(pos2, std::min(a.value_at(pos2), b.value_at(pos2))));
         }
     }
 
