@@ -315,13 +315,29 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
          loc_flipps[permutation[i]] = flippability[i];
     }
 
-    std::vector<int_t> prev_widths(loc_widths.size()+1, 0);
-    std::partial_sum(loc_widths.begin(), loc_widths.end(), std::next(prev_widths.begin()));
+    int_t min_limit = std::numeric_limits<int_t>::min();
+    for(index_t i=0; i<loc_ranges.size(); ++i){
+        min_limit = std::max(loc_ranges[i].first, min_limit);
+        loc_ranges[i].first = min_limit;
+        min_limit += loc_widths[i];
+    }
+    int_t max_limit = std::numeric_limits<int_t>::max();
+    for(index_t i=loc_ranges.size(); i>0; --i){
+        max_limit = std::min(loc_ranges[i-1].second, max_limit);
+        max_limit -= loc_widths[i-1];
+        loc_ranges[i-1].second = max_limit;
+    }
+
+    for(index_t i=0; i<loc_ranges.size(); ++i){
+        if(loc_ranges[i].first > loc_ranges[i].second){
+            std::cout << "Infeasible!" << std::endl;
+            return std::numeric_limits<std::int64_t>::max(); // Infeasible: return a very big cost
+        }
+    }
 
     std::vector<piecewise_linear_function> unflipped_cost_functions, flipped_cost_functions;
     for(index_t i=0; i<loc_ranges.size(); ++i){
-        // TODO: tighten the ranges b taking prevous cells' limits into account
-        auto cur = piecewise_linear_function(loc_ranges[i].first, loc_ranges[i].second - loc_widths[i]);
+        auto cur = piecewise_linear_function(loc_ranges[i].first, loc_ranges[i].second);
         unflipped_cost_functions.push_back(cur);
         flipped_cost_functions.push_back(cur);
     }
@@ -375,19 +391,11 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
 
     flippings.resize(cell_ranges.size(), 0); positions.resize(cell_ranges.size(), 0);
 
-    bool feasible = true;
-    int_t max_limit = std::numeric_limits<int_t>::max();
+    int_t pos = std::numeric_limits<int_t>::max();
     for(index_t i=loc_ranges.size(); i>0; --i){
         std::cout << "Result for " << i-1 << " of " << loc_ranges.size() << std::endl;
         // Find the best position and flipping for each cell
-        max_limit = std::min(max_limit, cell_ranges[i-1].second) - loc_widths[i-1];
-        if(max_limit < cell_ranges[i-1].first){
-            std::cout << "Infeasible" << std::endl;
-            feasible = false;
-            break;
-        }
-        int_t pos = prev_mins[i-1].last_before(max_limit);
-        max_limit = pos;
+        pos = prev_mins[i-1].last_before(std::min(pos - loc_widths[i-1], loc_ranges[i-1].second) );
         positions[i-1] = pos;
 
         std::cout << "Flippability? " << std::endl;
@@ -396,10 +404,11 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
         }
         std::cout << "Done" << std::endl;
     }
+
     for(index_t i=0; i<loc_ranges.size(); ++i){
         std::cout << "Pos : " << positions[i] << ", width: " << loc_widths[i] << std::endl;
         assert(positions[i] >= loc_ranges[i].first);
-        assert(positions[i] + loc_widths[i] <= loc_ranges[i].second);
+        assert(positions[i] <= loc_ranges[i].second);
     }
     for(index_t i=0; i+1<loc_ranges.size(); ++i){
         assert(positions[i] + loc_widths[i] <= positions[i+1]);
@@ -412,10 +421,7 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
         permuted_flippings[i] = flippings[permutation[i]];
     }
 
-    if(feasible)
-        return nets.get_cost(permuted_positions, permuted_flippings);
-    else
-        return std::numeric_limits<std::int64_t>::max(); // Infeasible: return a very big cost
+    return nets.get_cost(permuted_positions, permuted_flippings);
 }
 
 std::vector<std::pair<int_t, int_t> > get_cell_ranges(netlist const & circuit, detailed_placement const & pl, std::vector<index_t> const & cells){

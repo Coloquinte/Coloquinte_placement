@@ -21,8 +21,8 @@ struct pl_edge{
 
     static void push_intersections(pl_edge a, pl_edge b, piecewise_linear_function & lf){
         // Strict, because it makes everything easier
-        assert(a.f.first < b.s.first and a.s.first > b.f.first);
-        assert(a.f.first < a.s.first and b.f.first < b.s.first);
+        //assert(a.f.first < b.s.first and a.s.first > b.f.first);
+        //assert(a.f.first < a.s.first and b.f.first < b.s.first);
         
         std::int64_t denom = (a.s.first-a.f.first) * (b.s.second-b.f.second)
                     - (a.s.second-a.f.second) * (b.s.first-b.f.first);
@@ -128,13 +128,16 @@ piecewise_linear_function piecewise_linear_function::previous_min() const{
     print(*this);
 
     piecewise_linear_function ret;
+
+    assert(not point_values.empty());
+
     auto it = point_values.begin();
     ret.point_values.push_back(*it);
     ++it;
     // Use the previous minimum to detect when we find something smaller
     for(; it != point_values.end(); ++it){
         int_t cur_min = ret.point_values.back().second;
-        assert(it->first > ret.point_values.back().first);
+        assert(it->first >= ret.point_values.back().first);
         if(it->second < cur_min){
             if(std::prev(it)->first != ret.point_values.back().first){ // May be equal, in which case we don't need to push anything new
                 int_t pos = pl_edge(*std::prev(it), *it).pos_at(cur_min);
