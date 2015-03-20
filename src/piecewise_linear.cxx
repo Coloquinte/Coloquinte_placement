@@ -23,6 +23,9 @@ struct pl_edge{
         std::int64_t b_num = (a.f.second-b.f.second) * (a.s.first-a.f.first)
                     - (a.f.first-b.f.first) * (a.s.second-a.f.second);
 
+        // ra = (a.s.second - a.f.second) / (a.s.first - a.f.first)
+        // xintersect = (yb - ya - xb * rb + xa * ra) / (ra - rb)
+
         // There is an intersection if o_num / denom and num / denom are in [0,1]
 
         // Strict since intersections on a slope change point are already handled
@@ -32,20 +35,24 @@ struct pl_edge{
 
         if(intersect){
             // Find where they intersect
-            std::int64_t dist = a_num*(a.s.first-a.f.first);
-            if( (dist % denom == 0) ){ // Exact integer intersection
-                int_t pos = dist/denom;
-                if(pos > std::max(a.f.first, b.f.first)  and pos < std::min(a.s.first, b.s.first) ){ // Necessarily smaller than s.first due to the previous condition
+            //std::int64_t dist = a_num*(a.s.first-a.f.first);
+            double prop = static_cast<double>(a_num)/static_cast<double>(denom);
+            assert(prop >= 0.0 and prop <= 1.0);
+            double d_pos = prop * (a.s.first - a.f.first);
+            int_t pos = a.f.first + static_cast<int_t>(std::floor(d_pos));
+            assert(pos >= a.f.first and pos <= a.s.first);
+            if( std::ceil(d_pos) == std::floor(d_pos) ){ // Exact integer intersection
+                if(pos > std::max(a.f.first, b.f.first) and pos < std::min(a.s.first, b.s.first) ){ // Necessarily smaller than s.first due to the previous condition
                     lf.point_values.push_back(p_v(pos, a.value_at(pos)));
                 }
             }
             else{ // Non exact intersection: create two integers since I don't want to mess with floating point
-                int_t pos1 = a.f.first + dist / denom;
-                int_t pos2 = pos1 + 1;
+                int_t pos1 = pos;
+                int_t pos2 = pos + 1;
                 // Value_at is only an approximation, but it shouldn't be too bad
-                if(pos1 > std::max(a.f.first, b.f.first) )
+                if(pos1 > std::max(a.f.first, b.f.first) and pos1 < std::min(a.s.first, b.s.first))
                     lf.point_values.push_back(p_v(pos1, std::min(a.value_at(pos1), b.value_at(pos1))));
-                if(pos2 < std::min(a.s.first, b.s.first) )
+                if(pos2 > std::max(a.f.first, b.f.first) and pos2 < std::min(a.s.first, b.s.first))
                     lf.point_values.push_back(p_v(pos2, std::min(a.value_at(pos2), b.value_at(pos2))));
             }
         }
@@ -54,19 +61,19 @@ struct pl_edge{
     // Lower-rounded value
     int_t value_at(int_t pos) const{
         assert(pos >= f.first and pos <= s.first);
-        return (f.second * (s.first - pos) + s.second * (pos - f.first)) / (s.first - f.first); 
+        return (static_cast<std::int64_t>(f.second) * (s.first - pos) + static_cast<std::int64_t>(s.second) * (pos - f.first)) / (s.first - f.first); 
     }
     // Lower-rounded value
     int_t pos_at(int_t val) const{
         assert(val <= std::max(f.second, s.second) and val >= std::min(f.second, s.second));
         assert(f.second != s.second);
-        return (f.first * (s.second - val) + s.first * (val - f.second)) / (s.second - f.second); 
+        return (static_cast<std::int64_t>(f.first) * (s.second - val) + static_cast<std::int64_t>(s.first) * (val - f.second)) / (s.second - f.second); 
     }
 
     bool above(p_v const o) const{
         int_t pos = o.first;
         assert(pos > f.first and pos < s.first);
-        return (f.second * (s.first - pos) + s.second * (pos - f.first)) > o.second * (s.first - f.first); 
+        return (static_cast<std::int64_t>(f.second) * (s.first - pos) + static_cast<std::int64_t>(s.second) * (pos - f.first)) > o.second * (s.first - f.first); 
     }
 
     pl_edge(p_v a, p_v b) : f(a), s(b) {}
