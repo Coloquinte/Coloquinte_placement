@@ -367,10 +367,10 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
             flipped_cost_functions[lst_c].add_bislope(0,  cur_net.weight, cur_net.ext_pins.max - loc_widths[lst_c] + lst_pin_offs_mn);
         }
         else{
-            unflipped_cost_functions[fst_c].add_monotone(-cur_net.weight, fst_pin_offs_mn);
-            unflipped_cost_functions[lst_c].add_monotone( cur_net.weight, lst_pin_offs_mx);
-            flipped_cost_functions[fst_c].add_monotone(-cur_net.weight, loc_widths[fst_c] - fst_pin_offs_mx);
-            flipped_cost_functions[lst_c].add_monotone( cur_net.weight, loc_widths[lst_c] - lst_pin_offs_mn);
+            unflipped_cost_functions[fst_c].add_monotone(-cur_net.weight, -fst_pin_offs_mn);
+            unflipped_cost_functions[lst_c].add_monotone( cur_net.weight, -lst_pin_offs_mx);
+            flipped_cost_functions[fst_c].add_monotone(-cur_net.weight, fst_pin_offs_mx - loc_widths[fst_c] );
+            flipped_cost_functions[lst_c].add_monotone( cur_net.weight, lst_pin_offs_mn - loc_widths[lst_c] );
         }
     }
 

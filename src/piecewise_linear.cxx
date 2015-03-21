@@ -76,6 +76,7 @@ void piecewise_linear_function::add_bislope(int_t s_l, int_t s_r, int_t pos){
     //assert(pos <= point_values.back().first);
     //assert(pos >= point_values.front().first);
 
+/*
     if(pos >= point_values.back().first){
         add_monotone(s_l, point_values.front().first - pos);
     }
@@ -97,6 +98,19 @@ void piecewise_linear_function::add_bislope(int_t s_l, int_t s_r, int_t pos){
                 V.second += s_r * (V.first - pos);
         }
     }
+*/
+    for(auto & V : point_values){
+        if(V.first > pos)
+            V.second += s_r * (V.first - pos);
+        if(V.first < pos)
+            V.second += s_l * (V.first - pos);
+    }
+
+    auto it = std::lower_bound(point_values.begin(), point_values.end(), pos, [](p_v o, int_t v){ return o.first < v; });
+    if(it != point_values.end() and it->first != pos and it != point_values.begin()){
+        point_values.insert(it, p_v(pos, pl_edge(*std::prev(it), *it).value_at(pos)));
+    }
+
 }
 
 piecewise_linear_function::piecewise_linear_function(int_t min_def, int_t max_def){
