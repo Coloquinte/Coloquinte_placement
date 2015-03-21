@@ -71,7 +71,7 @@ struct cell_bound{
     index_t c;
     int_t pos;
     int_t slope;
-    bool operator<(cell_bound const o) const{ return c < o.c or (c==o.c and pos < o.pos); }
+    bool operator<(cell_bound const o) const{ return c < o.c; }
     cell_bound(index_t order, int_t p, int_t s) : c(order), pos(p), slope(s) {}
 };
 
