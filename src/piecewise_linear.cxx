@@ -45,7 +45,7 @@ struct pl_edge{
 
     // Lower-rounded value
     int_t value_at(int_t pos) const{
-        assert(pos >= f.first and pos <= s.first);
+        assert(pos >= f.first and pos <= s.first and s.first > f.first);
         return (static_cast<std::int64_t>(f.second) * (s.first - pos) + static_cast<std::int64_t>(s.second) * (pos - f.first)) / (s.first - f.first); 
     }
     // Lower-rounded value
@@ -68,7 +68,7 @@ struct pl_edge{
 void piecewise_linear_function::add_monotone(int_t slope, int_t offset){
     for(auto & V : point_values){
         // Offset taken into account here, multiplied with the slope
-        V.second += slope * (V.first - point_values.front().first + offset);
+        V.second += slope * (V.first - point_values.front().first - offset);
     }
 }
 
@@ -78,10 +78,10 @@ void piecewise_linear_function::add_bislope(int_t s_l, int_t s_r, int_t pos){
 
 /*
     if(pos >= point_values.back().first){
-        add_monotone(s_l, point_values.front().first - pos);
+        add_monotone(s_l, pos - point_values.front().first);
     }
     else if(pos <= point_values.front().first){
-        add_monotone(s_r, point_values.front().first - pos);
+        add_monotone(s_r, pos - point_values.front().first);
     }
     else{
         auto it = point_values.begin();
@@ -99,18 +99,19 @@ void piecewise_linear_function::add_bislope(int_t s_l, int_t s_r, int_t pos){
         }
     }
 */
+
+    auto it = std::lower_bound(point_values.begin(), point_values.end(), pos, [](p_v o, int_t v){ return o.first < v; });
+    if(it != point_values.end() and it->first != pos and it != point_values.begin()){
+        assert(it->first > pos);
+        point_values.insert(it, p_v(pos, pl_edge(*std::prev(it), *it).value_at(pos)));
+    }
+
     for(auto & V : point_values){
         if(V.first > pos)
             V.second += s_r * (V.first - pos);
         if(V.first < pos)
             V.second += s_l * (V.first - pos);
     }
-
-    auto it = std::lower_bound(point_values.begin(), point_values.end(), pos, [](p_v o, int_t v){ return o.first < v; });
-    if(it != point_values.end() and it->first != pos and it != point_values.begin()){
-        point_values.insert(it, p_v(pos, pl_edge(*std::prev(it), *it).value_at(pos)));
-    }
-
 }
 
 piecewise_linear_function::piecewise_linear_function(int_t min_def, int_t max_def){

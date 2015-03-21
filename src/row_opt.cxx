@@ -8,6 +8,8 @@
 
 #include <cassert>
 
+#include <iostream>
+
 namespace coloquinte{
 namespace dp{
 
@@ -160,7 +162,7 @@ struct Hnet_group{
                 bool flipped  = flip[pins[p].cell_index];
                 int_t wdth    = cell_widths[pins[p].cell_index];
                 mm.merge( flipped ? 
-                    minmax(cur_pos + wdth - pins[p].offset.min, cur_pos + wdth - pins[p].offset.max)
+                    minmax(cur_pos + wdth - pins[p].offset.max, cur_pos + wdth - pins[p].offset.min)
                   : minmax(cur_pos + pins[p].offset.min, cur_pos + pins[p].offset.max)
                 );
             }
@@ -289,6 +291,15 @@ inline std::int64_t optimize_convex_sequence(Hnet_group const & nets, std::vecto
         }
     }
 
+    std::sort(bounds.begin(), bounds.end());
+    for(index_t i=0, j=0; i<right_slopes.size(); ++i){
+        std::cout << "Bounds " << i << ", right slope " << right_slopes[i] << ": ";
+        for(; j<bounds.size() and bounds[j].c == i; ++j){
+            std::cout << bounds[j].pos << ", ";
+        }
+        std::cout << std::endl;
+    }
+
     bool feasible = place_convex_single_row(loc_widths, loc_ranges, bounds, right_slopes, positions);
 
     auto permuted_positions = positions;
@@ -376,12 +387,26 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
 
     std::vector<piecewise_linear_function> prev_mins, merged_costs;
     for(index_t i=0; i<loc_ranges.size(); ++i){
-        merged_costs.push_back(piecewise_linear_function::minimum(unflipped_cost_functions[i], flipped_cost_functions[i]));
+        merged_costs.push_back(loc_flipps[i] ?
+            piecewise_linear_function::minimum(unflipped_cost_functions[i], flipped_cost_functions[i])
+          : unflipped_cost_functions[i]
+        );
+        std::cout << "Values " << i << ": ";
+        for(auto p : merged_costs[i].point_values){
+            std::cout << p.first << ": " << p.second << ", ";
+        }
+        std::cout << std::endl;
         if(i>0){
             prev_mins.push_back(prev_mins.back().previous_min_of_sum(merged_costs.back(), loc_widths[i-1]));
         }
         else{
             prev_mins.push_back(merged_costs.back().previous_min());
+        }
+    }
+
+    for(auto const M : prev_mins){
+        for(index_t i=0; i+1<M.point_values.size(); ++i){
+            assert(M.point_values[i].second >= M.point_values[i+1].second);
         }
     }
 
@@ -393,7 +418,7 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
         pos = prev_mins[i-1].last_before(std::min(pos - loc_widths[i-1], loc_ranges[i-1].second) );
         positions[i-1] = pos;
 
-        if(flippability[i-1] and flipped_cost_functions[i-1].value_at(pos) < unflipped_cost_functions[i-1].value_at(pos)){
+        if(loc_flipps[i-1] and flipped_cost_functions[i-1].value_at(pos) < unflipped_cost_functions[i-1].value_at(pos)){
             flippings[i-1] = 1;
         }
     }
@@ -418,9 +443,6 @@ inline std::int64_t optimize_noncvx_sequence(Hnet_group const & nets, std::vecto
 
 std::vector<std::pair<int_t, int_t> > get_cell_ranges(netlist const & circuit, detailed_placement const & pl, std::vector<index_t> const & cells){
     std::vector<std::pair<int_t, int_t> > lims;
-
-    for(index_t i=0; i<cells.size(); ++i){
-    }
 
     for(index_t i=0; i+1<cells.size(); ++i){
         assert(pl.plt_.positions_[cells[i]].x_ + circuit.get_cell(cells[i]).size.x_ <= pl.plt_.positions_[cells[i+1]].x_);
@@ -459,7 +481,8 @@ void OSRP_generic(netlist const & circuit, detailed_placement & pl){
         for(index_t OSRP_cell = pl.get_first_cell_on_row(r); OSRP_cell != null_ind; OSRP_cell = pl.get_next_cell_on_row(OSRP_cell, r)){
             auto attr = circuit.get_cell(OSRP_cell).attributes;
             cells.push_back(OSRP_cell);
-            flippability.push_back( (attr & XFlippable) != 0 ? 1 : 0);
+            //flippability.push_back( (attr & XFlippable) != 0 ? 1 : 0);
+            flippability.push_back(0);
         }
 
         if(not cells.empty()){
@@ -475,7 +498,16 @@ void OSRP_generic(netlist const & circuit, detailed_placement & pl){
             std::vector<int_t> final_positions;
             if(NON_CONVEX){
                 std::vector<int> flipped;
-                optimize_noncvx_sequence(nets, no_permutation, final_positions, flipped, flippability, lims);
+                //auto res = optimize_noncvx_sequence(nets, no_permutation, final_positions, flipped, flippability, lims);
+                //assert(res == optimize_convex_sequence(nets, no_permutation, final_positions, lims));
+                std::cout << "Noncvx, " << optimize_noncvx_sequence(nets, no_permutation, final_positions, flipped, flippability, lims) << ": ";
+                for(int_t p : final_positions)
+                    std::cout << p << " ";
+                std::cout << std::endl;
+                std::cout << "Convex, " << optimize_convex_sequence(nets, no_permutation, final_positions, lims) << ": ";
+                for(int_t p : final_positions)
+                    std::cout << p << " ";
+                std::cout << std::endl;
                 for(index_t i=0; i<cells.size(); ++i){
                     bool old_orient = pl.plt_.orientations_[cells[i]].x_;
                     pl.plt_.orientations_[cells[i]].x_ = flipped[i] ? not old_orient : old_orient;
@@ -513,7 +545,8 @@ void swaps_row_generic(netlist const & circuit, detailed_placement & pl, index_t
                 OSRP_cell = pl.get_next_cell_on_row(OSRP_cell, r), ++nbr_cells
             ){
                 cells.push_back(OSRP_cell);
-                flippables.push_back( (circuit.get_cell(OSRP_cell).attributes & XFlippable) != 0);
+                //flippables.push_back( (circuit.get_cell(OSRP_cell).attributes & XFlippable) != 0);
+                flippables.push_back(0);
             }
 
             if(not cells.empty()){
