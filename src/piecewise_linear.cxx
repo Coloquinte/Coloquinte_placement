@@ -190,7 +190,12 @@ int_t piecewise_linear_function::last_before(int_t pos) const{
     auto it = point_values.rbegin();
     while(it != point_values.rend()){
         if(it->first <= pos){
-            return it->first;
+            if(it != point_values.rbegin() and std::prev(it)->first > pos){ // On a negative slope
+                return pos;
+            }
+            else{
+                return it->first; // First point or not mapped to a negative slope in the original function
+            }
         }
         ++it;
     }
