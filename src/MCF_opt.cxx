@@ -27,8 +27,10 @@ void optimize_on_topology_HPWL(netlist const & circuit, detailed_placement & pl)
     }
     std::vector<Node> Lnet_nodes(circuit.net_cnt()), Unet_nodes(circuit.net_cnt());
     for(index_t i=0; i<circuit.net_cnt(); ++i){
-        Lnet_nodes[i] = g.addNode();
-        Unet_nodes[i] = g.addNode();
+        if(circuit.get_net(i).pin_cnt > 0){
+            Lnet_nodes[i] = g.addNode();
+            Unet_nodes[i] = g.addNode();
+        }
     }
 
     // Two nodes for position constraints
@@ -82,7 +84,6 @@ void optimize_on_topology_HPWL(netlist const & circuit, detailed_placement & pl)
 
     // And every pin of every net: arcs too
     for(index_t n=0; n<circuit.net_cnt(); ++n){
-        assert(circuit.get_net(n).pin_cnt > 0);
         for(auto p : circuit.get_net(n)){
             index_t c = p.cell_ind;
             int_t pin_offs = (pl.plt_.orientations_[c].x_ ? p.offset.x_ : circuit.get_cell(c).size.x_ - p.offset.x_); // Offset to the beginning of the cell
@@ -104,8 +105,10 @@ void optimize_on_topology_HPWL(netlist const & circuit, detailed_placement & pl)
     // Then the only capacitated arcs: the ones for the nets
     std::vector<node_pair> net_supplies;
     for(index_t n=0; n<circuit.net_cnt(); ++n){
-        net_supplies.push_back(node_pair(Unet_nodes[n],  circuit.get_net(n).weight));
-        net_supplies.push_back(node_pair(Lnet_nodes[n], -circuit.get_net(n).weight));
+        if(circuit.get_net(n).pin_cnt > 0){
+            net_supplies.push_back(node_pair(Unet_nodes[n],  circuit.get_net(n).weight));
+            net_supplies.push_back(node_pair(Lnet_nodes[n], -circuit.get_net(n).weight));
+        }
     }
 
     // Create the maps to have cost and capacity for the arcs
