@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cassert>
 #include <set>
+#include <functional>
 
 namespace coloquinte{
 using edge_t = std::pair<index_t, index_t>;

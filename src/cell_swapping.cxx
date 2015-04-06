@@ -1,6 +1,7 @@
 
 #include "coloquinte/detailed.hxx"
 #include "coloquinte/circuit_helper.hxx"
+#include <functional>
 
 namespace coloquinte{
 namespace dp{

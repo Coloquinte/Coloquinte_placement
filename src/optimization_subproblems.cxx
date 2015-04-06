@@ -1,5 +1,6 @@
 
 #include "coloquinte/optimization_subproblems.hxx"
+#include <stdexcept>
 
 namespace coloquinte{
 
