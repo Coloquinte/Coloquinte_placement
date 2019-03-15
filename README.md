@@ -1,6 +1,6 @@
-# Coloquinte: an analytical VLSI placer
+# Coriolis Etesian: an analytical VLSI placer
 
-Coloquinte is a framework for placing VLSI circuit. It targets standard-cell digital circuits, optionally with pre-placed macroblocks.
+Etesian (formerly Coloquinte) is a framework for placing VLSI circuit. It targets standard-cell digital circuits, optionally with pre-placed macroblocks.
 
 It is now a complete tool, handling all steps of a placement flow. It features exact and approximate wirelength models, and should be updated to do timing- and routing-driven optimization.
 
@@ -9,7 +9,7 @@ It is still a work in progress, and the optimization process could be significan
 
 ## Principle
 
-Coloquinte is based on analytical placement: it performs continuous optimization of the objective function with a penalty accounting for overlap. This penalty is currently calculated from a legalized or partially legalized placement.
+Etesian is based on analytical placement: it performs continuous optimization of the objective function with a penalty accounting for overlap. This penalty is currently calculated from a legalized or partially legalized placement.
 It alternates between continuous optimization and legalization to reach a good solution, then perform local optimizations.
 
 ## Tools
