@@ -1,0 +1,26 @@
+# Prerequisites
+
+## LEMON
+* https://lemon.cs.elte.hu/trac/lemon
+* Get lemon. Build it by reading its INSTALL documents.
+* The version (as of 2019-03-16) tested with is 1.3.1.
+* In my case, I did (not system-wide install.)
+    * mkdir build  # make build directory for cmake to work
+    * cd build  # get inside it
+    * cmake -DCMAKE_INSTALL_PREFIX=$HOME/usr/lemon ..
+        * Install prefix is specified as above command.
+    * make  # compile LEMON
+    * make install  # install LEMON.
+* check coloquinte/src/CMakeFiles.txt, make sure
+  `include_directories($ENV{HOME}/usr/lemon/include)` points to where
+  you configured/installed lemon.
+
+
+# Compiling
+
+Build just like other cmake projects.
+
+* mkdir build
+* cd build
+* cmake -DCMAKE_INSTALL_PREFIX=$HOME/usr/etesian ..
+* make # or make -j for multi-threaded build

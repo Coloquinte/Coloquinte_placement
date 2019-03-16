@@ -2,6 +2,7 @@
 #ifndef COLOQUINTE_GP_HELPERCIRCUIT
 #define COLOQUINTE_GP_HELPERCIRCUIT
 
+#include <cmath>
 #include "common.hxx"
 #include "netlist.hxx"
 
