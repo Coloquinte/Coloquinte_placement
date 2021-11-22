@@ -1,9 +1,10 @@
-Coloquinte is now part of the Coriolis toolchain. If you are looking for a VLSI placement tool, please visit [the official Coriolis repository](https://gitlab.lip6.fr/vlsi-eda/coriolis/).
 
-# Coriolis Etesian: an analytical VLSI placer
+# [Coriolis](https://gitlab.lip6.fr/vlsi-eda/coriolis/) Etesian: an analytical VLSI placer
 
-Etesian (formerly Coloquinte) is a framework for placing VLSI circuit. It targets standard-cell digital circuits, optionally with pre-placed macroblocks.
+Etesian (formerly Coloquinte) is a framework for placing VLSI circuit. Coloquinte is now part of the Coriolis toolchain. If you are looking for an up-to-date version, please visit [the official Coriolis repository](https://gitlab.lip6.fr/vlsi-eda/coriolis/).
 
+
+It targets standard-cell digital circuits, optionally with pre-placed macroblocks.
 It is now a complete tool, handling all steps of a placement flow. It features exact and approximate wirelength models, and should be updated to do timing- and routing-driven optimization.
 
 It is not standalone: no parsers; currently, it interfaces with the Coriolis CAD toolchain, but you you can follow the example main and interface it with your own tool.
