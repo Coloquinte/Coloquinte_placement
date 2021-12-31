@@ -4,6 +4,7 @@
 
 #include "common.hxx"
 
+#include <numeric>
 #include <queue>
 #include <vector>
 #include <cassert>

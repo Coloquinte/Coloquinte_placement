@@ -132,7 +132,7 @@ std::vector<capacity_t>  transport_1D(std::vector<t1D_elt> sources, std::vector<
 namespace{ // Anonymous namespace to hide the transportation structures
 
 class current_allocation{
-    static const index_t null_ind = std::numeric_limits<index_t>::max();
+    const index_t null_ind = std::numeric_limits<index_t>::max();
 
     // Internal data structures
 

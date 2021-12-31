@@ -26,10 +26,14 @@ set ( cpps              circuit.cxx
                         legalizer.cxx
     )
 set ( coloquintecpps    main.cxx )
-					   
+
+# Make sure this points to where lemon is installed!
+include_directories($ENV{HOME}/usr/lemon/include)
+
 add_library ( coloquinte        ${cpps} )
 add_executable ( coloquinte.bin    ${coloquintecpps})
 target_link_libraries ( coloquinte.bin    coloquinte )
+set_property(TARGET coloquinte PROPERTY CXX_STANDARD 11)
 
 install( TARGETS coloquinte  DESTINATION lib${LIB_SUFFIX} )
 install( FILES ${includes}   DESTINATION include/coloquinte ) 
